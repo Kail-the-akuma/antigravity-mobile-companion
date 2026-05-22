@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antigravity Companion - Desktop Control Center</title>
+    <!-- Modern Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #08080C;
+            --card-bg: rgba(18, 18, 28, 0.45);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #FFFFFF;
+            --text-secondary: #94A3B8;
+            --accent-cyan: #00E5FF;
+            --accent-orange: #FF9500;
+            --accent-green: #00E676;
+            --accent-red: #FF3D00;
+            --neon-glow-cyan: 0 0 20px rgba(0, 229, 255, 0.25);
+            --neon-glow-orange: 0 0 20px rgba(255, 149, 0, 0.25);
+            --font-display: 'Outfit', sans-serif;
+            --font-body: 'Inter', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* Atmospheric Ambient Glowing Orbs */
+        .ambient-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(140px);
+            z-index: 0;
+            pointer-events: none;
+            opacity: 0.15;
+            transition: all 1s ease;
+        }
+
+        .orb-cyan {
+            width: 450px;
+            height: 450px;
+            background: var(--accent-cyan);
+            top: -100px;
+            left: -100px;
+            animation: floatOrb 15s infinite alternate;
+        }
+
+        .orb-orange {
+            width: 500px;
+            height: 500px;
+            background: var(--accent-orange);
+            bottom: -150px;
+            right: -100px;
+            animation: floatOrb 18s infinite alternate-reverse;
+        }
+
+        @keyframes floatOrb {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(50px, 30px) scale(1.1); }
+            100% { transform: translate(-30px, -50px) scale(0.9); }
+        }
+
+        /* Base Page Layout */
+        .app-container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 1350px;
+            margin: 0 auto;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            flex-grow: 1;
+        }
+
+        /* Breathtaking Header */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 30px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            backdrop-filter: blur(24px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin-bottom: 5px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo-icon {
+            width: 46px;
+            height: 46px;
+            background: linear-gradient(135deg, var(--accent-cyan), #0088FF);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--neon-glow-cyan);
+            animation: levitate 4s ease-in-out infinite;
+        }
+
+        @keyframes levitate {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        .logo-title {
+            font-family: var(--font-display);
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            background: linear-gradient(to right, #FFF, #C5C5D8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-subtitle {
+            font-family: var(--font-body);
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 2px;
+        }
+
+        .system-status {
+            display: flex;
+            align-items: center;
+            gap: 25px;
+        }
+
+        .status-capsule {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 230, 118, 0.08);
+            border: 1px solid rgba(0, 230, 118, 0.25);
+            padding: 8px 18px;
+            border-radius: 100px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent-green);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-green);
+            animation: pulseGreen 2s infinite;
+        }
+
+        @keyframes pulseGreen {
+            0% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.7); }
+            70% { box-shadow: 0 0 0 8px rgba(0, 230, 118, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); }
+        }
+
+        .server-url {
+            font-family: monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: rgba(255,255,255,0.04);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        /* Content Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 25px;
+            flex-grow: 1;
+        }
+
+        /* Widgets styling */
+        .widget-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            backdrop-filter: blur(24px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .widget-card:hover {
+            border-color: rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 45px rgba(0,0,0,0.5);
+        }
+
+        .widget-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            padding-bottom: 15px;
+        }
+
+        .widget-title {
+            font-family: var(--font-display);
+            font-size: 17px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .widget-icon-svg {
+            width: 18px;
+            height: 18px;
+            color: var(--accent-cyan);
+        }
+
+        /* Live Activity Tab & Log Screen */
+        .logs-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            height: 480px;
+            gap: 15px;
+        }
+
+        .terminal-screen {
+            background: rgba(5, 5, 8, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 12.5px;
+            color: #C5C9DB;
+            overflow-y: auto;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+
+        .log-row {
+            display: flex;
+            gap: 10px;
+            line-height: 1.5;
+            align-items: flex-start;
+            border-left: 2px solid transparent;
+            padding-left: 6px;
+        }
+
+        .log-time {
+            color: #565F89;
+            flex-shrink: 0;
+        }
+
+        .log-tag {
+            font-weight: 700;
+            font-size: 11px;
+            padding: 1px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+
+        .tag-info { background: rgba(0, 229, 255, 0.1); color: var(--accent-cyan); }
+        .tag-success { background: rgba(0, 230, 118, 0.1); color: var(--accent-green); }
+        .tag-warning { background: rgba(255, 149, 0, 0.1); color: var(--accent-orange); }
+        .tag-error { background: rgba(255, 61, 0, 0.1); color: var(--accent-red); }
+
+        .log-message {
+            color: #A9B1D6;
+        }
+
+        /* Controls / Pairing Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        /* Pairing Card Dashboard */
+        .pairing-card {
+            align-items: center;
+            text-align: center;
+            background: linear-gradient(145deg, rgba(20,20,35,0.45), rgba(10,10,20,0.3));
+        }
+
+        .pairing-pin-box {
+            background: rgba(255,255,255,0.03);
+            border: 1px dashed rgba(0, 229, 255, 0.35);
+            padding: 20px 40px;
+            border-radius: 16px;
+            font-family: var(--font-display);
+            font-size: 42px;
+            font-weight: 800;
+            color: var(--accent-cyan);
+            letter-spacing: 4px;
+            margin: 15px 0 5px 0;
+            text-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .pairing-pin-box:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: var(--accent-cyan);
+            transform: scale(1.02);
+        }
+
+        .pin-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        .button-cyan {
+            width: 100%;
+            background: linear-gradient(135deg, #00B0FF, #0088FF);
+            color: #FFFFFF;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-family: var(--font-body);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(0, 136, 255, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .button-cyan:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 136, 255, 0.45);
+        }
+
+        .button-cyan:active {
+            transform: translateY(0);
+        }
+
+        /* Paired Devices Widget */
+        .devices-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+        }
+
+        .device-item {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 12px 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.2s ease;
+        }
+
+        .device-item:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .device-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .device-icon-wrapper {
+            width: 34px;
+            height: 34px;
+            background: rgba(0, 230, 118, 0.1);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-green);
+        }
+
+        .device-name {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #F8FAFC;
+        }
+
+        .device-status-badge {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--accent-green);
+            background: rgba(0, 230, 118, 0.08);
+            border: 1px solid rgba(0, 230, 118, 0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        /* Path watcher settings */
+        .settings-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .settings-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .settings-input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        .settings-input {
+            flex-grow: 1;
+            background: rgba(5,5,8,0.5);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: monospace;
+            font-size: 12.5px;
+            color: #C5C9DB;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .settings-input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.15);
+        }
+
+        .button-secondary {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: var(--text-primary);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .button-secondary:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.15);
+        }
+
+        /* Copy Alert Toast */
+        .toast-alert {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: rgba(18, 18, 28, 0.9);
+            border: 1px solid var(--accent-cyan);
+            color: var(--text-primary);
+            padding: 12px 25px;
+            border-radius: 50px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: var(--neon-glow-cyan);
+            z-index: 1000;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toast-alert.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast-success-icon {
+            color: var(--accent-cyan);
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Atmospheric Glowing Backdrops -->
+    <div class="ambient-orb orb-cyan"></div>
+    <div class="ambient-orb orb-orange"></div>
+
+    <div class="app-container">
+        
+        <!-- Breathtaking Header -->
+        <header>
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <!-- Levitating Logo SVG -->
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <polyline points="19 12 12 19 5 12"></polyline>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="logo-title">Antigravity Companion</h1>
+                    <div class="logo-subtitle">Desktop Control Center</div>
+                </div>
+            </div>
+
+            <div class="system-status">
+                <span class="server-url" id="serverAddress">http://127.0.0.1:5117</span>
+                <div class="status-capsule">
+                    <span class="status-dot"></span>
+                    <span id="daemonStatusText">ONLINE</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Content -->
+        <div class="dashboard-grid">
+            
+            <!-- Left Side: Log Console (SPECTATOR MODE) -->
+            <div class="widget-card">
+                <div class="widget-header">
+                    <h2 class="widget-title">
+                        <svg class="widget-icon-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <polyline points="4 17 10 11 15 16 20 9"></polyline>
+                            <polyline points="14 9 20 9 20 15"></polyline>
+                        </svg>
+                        Real-Time System Activity
+                    </h2>
+                    <span class="server-url" style="color: var(--accent-cyan); font-size: 11px; text-transform: uppercase;">SignalR Hub Connection Active</span>
+                </div>
+
+                <div class="logs-container">
+                    <div class="terminal-screen" id="logTerminal">
+                        <!-- Simulated / dynamic websocket logs go here -->
+                        <div class="log-row">
+                            <span class="log-time">22:08:44</span>
+                            <span class="log-tag tag-info">Info</span>
+                            <span class="log-message">Initializing C# companion webserver core...</span>
+                        </div>
+                        <div class="log-row">
+                            <span class="log-time">22:08:45</span>
+                            <span class="log-tag tag-info">Info</span>
+                            <span class="log-message">SQLite DB connection opened successfully. Schema verification verified.</span>
+                        </div>
+                        <div class="log-row">
+                            <span class="log-time">22:08:45</span>
+                            <span class="log-tag tag-success">Success</span>
+                            <span class="log-message">Websockets SignalR mapping completed at path: /hubs/companion</span>
+                        </div>
+                        <div class="log-row">
+                            <span class="log-time">22:08:46</span>
+                            <span class="log-tag tag-success">Success</span>
+                            <span class="log-message">Kestrel HTTP Web API listening successfully at: http://0.0.0.0:5117</span>
+                        </div>
+                        <div class="log-row">
+                            <span class="log-time">22:08:46</span>
+                            <span class="log-tag tag-info">Info</span>
+                            <span class="log-message">Auto-pairing credentials successfully generated for network pairing.</span>
+                        </div>
+                        <div class="log-row">
+                            <span class="log-time">22:08:47</span>
+                            <span class="log-tag tag-info">Info</span>
+                            <span class="log-message">Native Photino.NET Webview Window launched. Dashboard UI bound dynamically.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Sidebar Controls -->
+            <div class="sidebar">
+                
+                <!-- Pairing credentials Widget -->
+                <div class="widget-card pairing-card">
+                    <div class="widget-header" style="width: 100%; border: none; padding-bottom: 0;">
+                        <h2 class="widget-title" style="margin: 0 auto;">
+                            Companion Pairing PIN
+                        </h2>
+                    </div>
+                    
+                    <p style="font-size: 13px; color: var(--text-secondary); max-width: 280px; margin-top: -10px;">
+                        Enter this 6-digit pin in your "Antigravity Companion" mobile app to link devices.
+                    </p>
+
+                    <div class="pairing-pin-box" id="pinBox" onclick="copyCredentials()">
+                        000000
+                    </div>
+                    <span class="pin-label" id="expiresLabel">EXPIRES IN 60m</span>
+
+                    <button class="button-cyan" id="btnNewPin" onclick="requestNewToken()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                        </svg>
+                        Generate New PIN
+                    </button>
+                </div>
+
+                <!-- Paired Device Info Widget -->
+                <div class="widget-card">
+                    <div class="widget-header">
+                        <h2 class="widget-title">
+                            <svg class="widget-icon-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                                <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                            </svg>
+                            Linked Companion Devices
+                        </h2>
+                    </div>
+
+                    <div class="devices-list" id="pairedDevicesContainer">
+                        <!-- Rendered devices list -->
+                        <div class="device-item" style="border: 1px dashed rgba(255,255,255,0.06); background: transparent; justify-content: center; padding: 25px 15px;">
+                            <span style="color: var(--text-secondary); font-size: 12.5px;">Awaiting companion connection...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuration settings Workspace watcher -->
+                <div class="widget-card">
+                    <div class="widget-header">
+                        <h2 class="widget-title">
+                            <svg class="widget-icon-svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                            </svg>
+                            Workspace Watcher
+                        </h2>
+                    </div>
+
+                    <div class="settings-input-group">
+                        <label class="settings-label">Target Workspace Directory</label>
+                        <div class="settings-input-wrapper">
+                            <input type="text" class="settings-input" id="workspacePathInput" value="C:\Users\Hugo\Documents\GitHub\HomeSync" readonly>
+                            <button class="button-secondary" onclick="browseFolder()">MONITORED</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Notification Toast Alerts -->
+    <div class="toast-alert" id="copyToast">
+        <span class="toast-success-icon">✓</span>
+        <span>Credentials copied to clipboard!</span>
+    </div>
+
+    <!-- JavaScript integration -->
+    <script>
+        let currentIp = "127.0.0.1";
+        let currentPort = 5117;
+        let currentPin = "000000";
+
+        // Query status from C# Web API on load
+        async function fetchPairingStatus() {
+            try {
+                const response = await fetch('/api/pairing/status');
+                if (!response.ok) throw new Error('API server unreachable');
+                
+                const data = await response.json();
+                
+                // Update credentials
+                currentIp = data.ip;
+                currentPort = data.port;
+                currentPin = data.token;
+                
+                document.getElementById('pinBox').innerText = data.token;
+                document.getElementById('serverAddress').innerText = `http://${data.ip}:${data.port}`;
+                
+                // Expiry calculator
+                const expiresAt = new Date(data.expiresAt);
+                const diffMs = expiresAt - new Date();
+                const diffMins = Math.max(0, Math.round(diffMs / 60000));
+                document.getElementById('expiresLabel').innerText = `EXPIRES IN ${diffMins}m`;
+
+                // Update paired devices list
+                const container = document.getElementById('pairedDevicesContainer');
+                container.innerHTML = '';
+
+                if (data.devices && data.devices.length > 0) {
+                    data.devices.forEach(dev => {
+                        const devItem = document.createElement('div');
+                        devItem.className = 'device-item';
+                        devItem.innerHTML = `
+                            <div class="device-info">
+                                <div class="device-icon-wrapper">
+                                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                        <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                                        <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="device-name">${escapeHtml(dev.deviceName)}</div>
+                                    <div style="font-size: 11px; color: var(--text-secondary); margin-top: 1px;">ID: ${dev.id.substring(0, 8)}...</div>
+                                </div>
+                            </div>
+                            <span class="device-status-badge">CONNECTED</span>
+                        `;
+                        container.appendChild(devItem);
+                    });
+
+                    // Add a log entry for devices found
+                    addLog("success", `Active linked device list synchronized with ${data.devices.length} verified companion(s).`);
+                } else {
+                    container.innerHTML = `
+                        <div class="device-item" style="border: 1px dashed rgba(255,255,255,0.06); background: transparent; justify-content: center; padding: 25px 15px;">
+                            <span style="color: var(--text-secondary); font-size: 12.5px;">Awaiting companion connection...</span>
+                        </div>
+                    `;
+                }
+
+            } catch (err) {
+                console.error("Error fetching pairing status:", err);
+                document.getElementById('daemonStatusText').innerText = "OFFLINE";
+                document.getElementById('daemonStatusText').parentElement.style.borderColor = "var(--accent-red)";
+                document.getElementById('daemonStatusText').parentElement.style.color = "var(--accent-red)";
+                document.getElementById('daemonStatusText').parentElement.style.background = "rgba(255, 61, 0, 0.08)";
+                document.querySelector('.status-dot').style.backgroundColor = "var(--accent-red)";
+                document.querySelector('.status-dot').style.boxShadow = "0 0 10px var(--accent-red)";
+            }
+        }
+
+        // Initialize pairing PIN renewal
+        async function requestNewToken() {
+            try {
+                addLog("info", "Requesting new PIN generation from backend controller...");
+                const response = await fetch('/api/pairing/init', { method: 'POST' });
+                if (!response.ok) throw new Error('API server rejected token generation');
+                
+                const data = await response.json();
+                currentPin = data.token;
+                document.getElementById('pinBox').innerText = data.token;
+                addLog("success", `New pairing PIN generated successfully: ${data.token}`);
+                
+                // Recalculate expiry
+                const expiresAt = new Date(data.expiresAt);
+                const diffMs = expiresAt - new Date();
+                const diffMins = Math.max(0, Math.round(diffMs / 60000));
+                document.getElementById('expiresLabel').innerText = `EXPIRES IN ${diffMins}m`;
+
+                showToast("New pairing PIN generated and ready!");
+            } catch (err) {
+                addLog("error", `Failed to generate new pairing PIN: ${err.message}`);
+            }
+        }
+
+        // Copy credentials to clipboard
+        function copyCredentials() {
+            const pairingInfo = `IP: ${currentIp}\nPort: ${currentPort}\nPIN: ${currentPin}`;
+            navigator.clipboard.writeText(pairingInfo).then(() => {
+                showToast("Connection details copied to clipboard!");
+                addLog("info", "Pairing connection credentials copied to local clipboard.");
+            }).catch(err => {
+                // Safe fallback for Photino webview
+                const textarea = document.createElement("textarea");
+                textarea.value = pairingInfo;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textarea);
+                showToast("Connection details copied!");
+            });
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('copyToast');
+            toast.querySelector('span:nth-child(2)').innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Helper to append rows to our live console widget log screen
+        function addLog(type, message) {
+            const terminal = document.getElementById('logTerminal');
+            const now = new Date();
+            const timeStr = now.toTimeString().split(' ')[0];
+
+            const row = document.createElement('div');
+            row.className = 'log-row';
+            row.innerHTML = `
+                <span class="log-time">${timeStr}</span>
+                <span class="log-tag tag-${type}">${type}</span>
+                <span class="log-message">${escapeHtml(message)}</span>
+            `;
+            
+            terminal.appendChild(row);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function browseFolder() {
+            showToast("Monitored directory managed by desktop agent");
+        }
+
+        // Startup polling to check active connections and status
+        fetchPairingStatus();
+        setInterval(fetchPairingStatus, 15000); // Poll status every 15s to keep dashboard synchronized
+
+    </script>
+</body>
+</html>

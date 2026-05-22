@@ -46,6 +46,45 @@ namespace AntigravityDaemon.Api.Controllers
             return (_activePairingToken, localIp, port, _tokenExpiry);
         }
 
+        // Endpoint to fetch current pairing status and registered devices
+        [HttpGet("status")]
+        public async Task<IActionResult> GetStatus()
+        {
+            var devices = await _context.TrustedDevices.Select(d => new {
+                id = d.Id,
+                deviceName = d.DeviceName,
+                hasPushToken = !string.IsNullOrEmpty(d.PushToken)
+            }).ToListAsync();
+
+            // Retrieve local network IP
+            string localIp = "127.0.0.1";
+            try
+            {
+                using (System.Net.Sockets.Socket socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork, System.Net.Sockets.SocketType.Dgram, 0))
+                {
+                    socket.Connect("8.8.8.8", 65530);
+                    var endPoint = socket.LocalEndPoint as System.Net.IPEndPoint;
+                    localIp = endPoint?.Address.ToString() ?? "127.0.0.1";
+                }
+            }
+            catch {}
+
+            // If token is expired or not set, initialize it
+            if (string.IsNullOrEmpty(_activePairingToken) || DateTime.UtcNow > _tokenExpiry)
+            {
+                GenerateToken(5117);
+            }
+
+            return Ok(new
+            {
+                token = _activePairingToken,
+                ip = localIp,
+                port = 5117,
+                expiresAt = _tokenExpiry,
+                devices = devices
+            });
+        }
+
         // Endpoint to initialize pairing (returns local info to build a QR Code)
         [HttpPost("init")]
         public IActionResult InitPairing()

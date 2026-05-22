@@ -3,6 +3,7 @@ using AntigravityDaemon.Data;
 using AntigravityDaemon.Api.Hubs;
 using AntigravityDaemon.Core.Services;
 using AntigravityDaemon.Api.Services;
+using Photino.NET;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://0.0.0.0:5117");
@@ -46,6 +47,9 @@ if (app.Environment.IsDevelopment())
 }
 
 // app.UseHttpsRedirection(); // Removed to allow clean local HTTP connections over LAN without redirection warnings or socket blocks
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 app.UseRouting();
 
@@ -170,5 +174,42 @@ Console.ForegroundColor = ConsoleColor.Cyan;
 Console.WriteLine("========================================================================");
 Console.ResetColor();
 
-app.Run();
+// Run the ASP.NET Core app in the background
+Task.Run(() => app.Run());
+
+// Wait slightly for the Kestrel server to warm up and spin up sockets
+Thread.Sleep(800);
+
+// Initialize Photino.NET Window
+try
+{
+    Console.ForegroundColor = ConsoleColor.Magenta;
+    Console.WriteLine("🖥️  LAUNCHING NATIVE DESKTOP DASHBOARD...");
+    Console.ResetColor();
+
+    var window = new PhotinoWindow()
+        .SetTitle("Antigravity Companion - Desktop Control Center")
+        .SetUseOsDefaultSize(false)
+        .SetSize(1200, 800)
+        .Center()
+        .Load("http://localhost:5117/index.html");
+
+    // Start native GUI message loop (blocks until window is closed)
+    window.WaitForClose();
+
+    Console.ForegroundColor = ConsoleColor.Yellow;
+    Console.WriteLine("🔌 Native GUI window closed. Shutting down daemon backend...");
+    Console.ResetColor();
+}
+catch (Exception ex)
+{
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine($"⚠️  Failed to launch native GUI window: {ex.Message}");
+    Console.WriteLine("Continuing to run daemon in headless console mode.");
+    Console.ResetColor();
+    
+    // In case Photino fails (e.g. headless environment or missing WebView2), keep the console app running by waiting on the host
+    app.WaitForShutdown();
+}
+
 
