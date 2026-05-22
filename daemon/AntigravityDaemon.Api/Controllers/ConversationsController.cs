@@ -199,11 +199,13 @@ namespace AntigravityDaemon.Api.Controllers
                     Console.WriteLine("==================================================\n");
                     Console.ResetColor();
 
+                    var sanitizedReply = SanitizeMessageContent(agentReply, "agent");
+
                     var agentMessage = new ConversationMessage
                     {
                         ConversationId = convId,
                         Role = "agent",
-                        Content = agentReply,
+                        Content = sanitizedReply,
                         Timestamp = DateTime.UtcNow,
                     };
 
@@ -754,7 +756,7 @@ namespace AntigravityDaemon.Api.Controllers
                                         messages.Add(new ConversationMessage
                                         {
                                             Role = "agent",
-                                            Content = parsed.content,
+                                            Content = SanitizeMessageContent(parsed.content, "agent"),
                                             Timestamp = timestamp
                                         });
                                     }
@@ -810,8 +812,7 @@ namespace AntigravityDaemon.Api.Controllers
                         {
                             bool exists = existingConv.Messages.Any(em => 
                                 em.Role == msg.Role && 
-                                em.Content == msg.Content && 
-                                Math.Abs((em.Timestamp.ToUniversalTime() - msg.Timestamp.ToUniversalTime()).TotalSeconds) < 5);
+                                Math.Abs((em.Timestamp.ToUniversalTime() - msg.Timestamp.ToUniversalTime()).TotalSeconds) < 15);
 
                             if (!exists)
                             {
@@ -866,6 +867,95 @@ namespace AntigravityDaemon.Api.Controllers
             catch (Exception ex)
             {
                 Console.WriteLine($"Erro ao escrever prompt para o workspace: {ex.Message}");
+            }
+        }
+
+        private static string SanitizeMessageContent(string content, string role)
+        {
+            if (role != "agent" || string.IsNullOrEmpty(content))
+            {
+                return content;
+            }
+
+            try
+            {
+                // 1. Strip massive code blocks or replace them
+                var lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+                var sanitizedLines = new List<string>();
+                
+                bool inCodeBlock = false;
+                var currentBlockLines = new List<string>();
+                string codeBlockHeader = "";
+
+                foreach (var line in lines)
+                {
+                    if (line.TrimStart().StartsWith("```"))
+                    {
+                        if (!inCodeBlock)
+                        {
+                            inCodeBlock = true;
+                            codeBlockHeader = line;
+                            currentBlockLines.Clear();
+                        }
+                        else
+                        {
+                            inCodeBlock = false;
+                            if (currentBlockLines.Count > 15)
+                            {
+                                sanitizedLines.Add(codeBlockHeader);
+                                sanitizedLines.Add("... [Código/Diff de grande dimensão omitido para melhor performance no telemóvel] ...");
+                                sanitizedLines.Add("```");
+                            }
+                            else
+                            {
+                                sanitizedLines.Add(codeBlockHeader);
+                                sanitizedLines.AddRange(currentBlockLines);
+                                sanitizedLines.Add("```");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (inCodeBlock)
+                        {
+                            currentBlockLines.Add(line);
+                        }
+                        else
+                        {
+                            sanitizedLines.Add(line);
+                        }
+                    }
+                }
+
+                if (inCodeBlock)
+                {
+                    if (currentBlockLines.Count > 15)
+                    {
+                        sanitizedLines.Add(codeBlockHeader);
+                        sanitizedLines.Add("... [Código/Diff de grande dimensão omitido para melhor performance no telemóvel] ...");
+                        sanitizedLines.Add("```");
+                    }
+                    else
+                    {
+                        sanitizedLines.Add(codeBlockHeader);
+                        sanitizedLines.AddRange(currentBlockLines);
+                    }
+                }
+
+                string result = string.Join("\n", sanitizedLines);
+
+                // 2. Truncate elegantly if it is still too large
+                if (result.Length > 2500)
+                {
+                    result = result.Substring(0, 2400) + "\n\n... *(O resto desta resposta longa foi omitido no telemóvel para otimizar a performance)*";
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sanitizing agent message content: {ex.Message}");
+                return content.Length > 2000 ? content.Substring(0, 1900) + "\n\n... (Mensagem truncada por limite de tamanho)" : content;
             }
         }
     }

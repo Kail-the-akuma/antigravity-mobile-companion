@@ -184,6 +184,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               agentEmoji={agent.iconEmoji}
             />
           )}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
           contentContainerStyle={styles.messageList}
           showsVerticalScrollIndicator={false}
           onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}

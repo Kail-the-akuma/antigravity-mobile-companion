@@ -9,7 +9,7 @@ interface MessageBubbleProps {
   agentEmoji?: string;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({
+export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
   role,
   content,
   timestamp,
@@ -40,7 +40,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       </View>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   row: {
