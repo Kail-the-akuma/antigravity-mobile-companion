@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using AntigravityDaemon.Data;
 using AntigravityDaemon.Core.Models;
 using AntigravityDaemon.Api.Hubs;
+using AntigravityDaemon.Api.Filters;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -25,6 +26,7 @@ namespace AntigravityDaemon.Api.Controllers
 
         // GET: api/tasks
         [HttpGet]
+        [AuthorizeDevice]
         public async Task<ActionResult<IEnumerable<TaskItem>>> GetTasks()
         {
             return await _context.Tasks.ToListAsync();
@@ -34,6 +36,7 @@ namespace AntigravityDaemon.Api.Controllers
 
         // POST: api/tasks (Injected remotely from the Mobile Companion App)
         [HttpPost]
+        [AuthorizeDevice]
         public async Task<ActionResult<TaskItem>> CreateTask([FromBody] CreateTaskRequest request)
         {
             var taskItem = new TaskItem

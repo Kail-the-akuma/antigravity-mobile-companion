@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using AntigravityDaemon.Data;
 using AntigravityDaemon.Core.Models;
 using AntigravityDaemon.Api.Hubs;
+using AntigravityDaemon.Api.Filters;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Threading.Tasks;
@@ -83,6 +84,7 @@ namespace AntigravityDaemon.Api.Controllers
 
         // POST: api/approvals/{id}/respond (Called remotely by the Mobile Companion App to approve/reject)
         [HttpPost("{id}/respond")]
+        [AuthorizeDevice]
         public async Task<IActionResult> RespondApproval(Guid id, [FromBody] RespondApprovalPayload payload)
         {
             var approval = await _context.Approvals.FindAsync(id);

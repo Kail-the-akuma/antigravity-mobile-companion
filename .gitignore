@@ -1,0 +1,24 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# React Native / Node
+node_modules/
+.expo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env*.local
+
+# OS files
+.DS_Store
+Thumbs.db

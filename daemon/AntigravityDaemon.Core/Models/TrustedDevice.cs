@@ -6,7 +6,7 @@ namespace AntigravityDaemon.Core.Models
     {
         public Guid Id { get; set; } = Guid.NewGuid();
         public string DeviceName { get; set; } = string.Empty;
-        public string PublicKeyPem { get; set; } = string.Empty;
+        public string SecretKey { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

@@ -54,9 +54,9 @@ namespace AntigravityDaemon.Api.Controllers
             });
         }
 
-        public record ConfirmPairingRequest(string Token, string DeviceName, string PublicKeyPem);
+        public record ConfirmPairingRequest(string Token, string DeviceName, string DeviceId, string SecretKey);
 
-        // Endpoint for the Mobile App to confirm pairing and register its public key
+        // Endpoint for the Mobile App to confirm pairing and register its symmetric secret key
         [HttpPost("confirm")]
         public async Task<IActionResult> ConfirmPairing([FromBody] ConfirmPairingRequest request)
         {
@@ -70,11 +70,17 @@ namespace AntigravityDaemon.Api.Controllers
                 return Unauthorized("invalid pairing token.");
             }
 
+            if (!Guid.TryParse(request.DeviceId, out var deviceIdGuid))
+            {
+                return BadRequest("invalid DeviceId format.");
+            }
+
             // Register trusted device
             var device = new TrustedDevice
             {
+                Id = deviceIdGuid,
                 DeviceName = request.DeviceName,
-                PublicKeyPem = request.PublicKeyPem
+                SecretKey = request.SecretKey
             };
 
             _context.TrustedDevices.Add(device);

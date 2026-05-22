@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\buildMultiTargeting\AntigravityDaemon.Api.props" />
-</Project>
