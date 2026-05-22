@@ -98,7 +98,8 @@ namespace AntigravityDaemon.Api.Filters
                 {
                     payload = System.Text.Json.JsonSerializer.Serialize(arg, new System.Text.Json.JsonSerializerOptions
                     {
-                        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+                        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
                     });
                     break;
                 }
