@@ -12,6 +12,8 @@ import {
   SafeAreaView,
   Alert,
   Platform,
+  StatusBar,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
@@ -173,80 +175,86 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onUnpair }) =>
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Antigravity</Text>
-          <View style={styles.connectionBadge}>
-            <View
-              style={[
-                styles.connectionDot,
-                { backgroundColor: isConnected ? Colors.success : Colors.danger },
-              ]}
-            />
-            <Text style={styles.connectionText}>
-              {isConnected ? 'Sincronizado' : 'Desconectado'}
-            </Text>
-          </View>
-        </View>
-        <TouchableOpacity style={styles.unpairButton} onPress={handleUnpair} activeOpacity={0.8}>
-          <Text style={styles.unpairButtonText}>Desligar</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Task Feed */}
-      <View style={styles.feedContainer}>
-        <Text style={styles.sectionTitle}>Feed de Atividades</Text>
-        {loadingTasks ? (
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>A carregar tarefas...</Text>
-          </View>
-        ) : tasks.length === 0 ? (
-          <View style={styles.centered}>
-            <Text style={styles.emptyText}>Nenhuma tarefa ativa ou registada.</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={tasks}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TaskCard
-                prompt={item.prompt}
-                status={item.status}
-                createdAt={item.createdAt}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title}>Antigravity</Text>
+            <View style={styles.connectionBadge}>
+              <View
+                style={[
+                  styles.connectionDot,
+                  { backgroundColor: isConnected ? Colors.success : Colors.danger },
+                ]}
               />
-            )}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-          />
-        )}
-      </View>
+              <Text style={styles.connectionText}>
+                {isConnected ? 'Sincronizado' : 'Desconectado'}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.unpairButton} onPress={handleUnpair} activeOpacity={0.8}>
+            <Text style={styles.unpairButtonText}>Desligar</Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* Remote Prompt Sender Input Area */}
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Envie um comando para o workspace..."
-          placeholderTextColor={Colors.textMuted}
-          value={prompt}
-          onChangeText={setPrompt}
-          multiline
-          maxHeight={100}
-        />
-        <TouchableOpacity
-          style={[styles.sendButton, (!prompt.trim() || sendingPrompt) && styles.sendButtonDisabled]}
-          onPress={handleSendPrompt}
-          disabled={!prompt.trim() || sendingPrompt}
-          activeOpacity={0.8}
-        >
-          {sendingPrompt ? (
-            <ActivityIndicator color="#FFF" size="small" />
+        {/* Task Feed */}
+        <View style={styles.feedContainer}>
+          <Text style={styles.sectionTitle}>Feed de Atividades</Text>
+          {loadingTasks ? (
+            <View style={styles.centered}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+              <Text style={styles.loadingText}>A carregar tarefas...</Text>
+            </View>
+          ) : tasks.length === 0 ? (
+            <View style={styles.centered}>
+              <Text style={styles.emptyText}>Nenhuma tarefa ativa ou registada.</Text>
+            </View>
           ) : (
-            <Text style={styles.sendButtonText}>Executar</Text>
+            <FlatList
+              data={tasks}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TaskCard
+                  prompt={item.prompt}
+                  status={item.status}
+                  createdAt={item.createdAt}
+                />
+              )}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+            />
           )}
-        </TouchableOpacity>
-      </View>
+        </View>
+
+        {/* Remote Prompt Sender Input Area */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Envie um comando para o workspace..."
+            placeholderTextColor={Colors.textMuted}
+            value={prompt}
+            onChangeText={setPrompt}
+            multiline
+            maxHeight={100}
+          />
+          <TouchableOpacity
+            style={[styles.sendButton, (!prompt.trim() || sendingPrompt) && styles.sendButtonDisabled]}
+            onPress={handleSendPrompt}
+            disabled={!prompt.trim() || sendingPrompt}
+            activeOpacity={0.8}
+          >
+            {sendingPrompt ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <Text style={styles.sendButtonText}>Executar</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
 
       {/* Cryptographically Protected Approval Modal Overlay */}
       {activeApproval && (
@@ -319,7 +327,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 12 : 12,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderColor: Colors.border,
   },
@@ -393,7 +402,9 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
     borderTopWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.surface,
