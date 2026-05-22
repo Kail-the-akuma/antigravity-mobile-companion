@@ -40,5 +40,11 @@ namespace AntigravityDaemon.Api.Hubs
         {
             await Clients.All.SendAsync("AgentStatusChanged", agentId, isOnline);
         }
+
+        // Active agent execution state (from desktop IDE or background runner)
+        public async Task BroadcastAgentExecutionState(string conversationId, string prompt, bool isActive)
+        {
+            await Clients.All.SendAsync("ReceiveAgentExecutionState", conversationId, prompt, isActive);
+        }
     }
 }

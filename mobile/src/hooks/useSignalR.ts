@@ -33,6 +33,7 @@ export const useSignalR = (hubUrl: string | null) => {
   const [activeApproval, setActiveApproval] = useState<ApprovalRequest | null>(null);
   const [incomingMessage, setIncomingMessage] = useState<ChatMessage | null>(null);
   const [agentStatusUpdate, setAgentStatusUpdate] = useState<{ agentId: string; isOnline: boolean } | null>(null);
+  const [activeExecutionState, setActiveExecutionState] = useState<{ conversationId: string; prompt: string; isActive: boolean } | null>(null);
   const connectionRef = useRef<signalR.HubConnection | null>(null);
 
   useEffect(() => {
@@ -89,11 +90,22 @@ export const useSignalR = (hubUrl: string | null) => {
         content,
         timestamp,
       });
+
+      // Auto-clear active desktop execution state when receiving agent responses
+      if (role === 'agent') {
+        setActiveExecutionState(null);
+      }
     });
 
     // New: agent online/offline status changes
     connection.on('AgentStatusChanged', (agentId: string, isOnline: boolean) => {
       setAgentStatusUpdate({ agentId, isOnline });
+    });
+
+    // New: Active agent execution state
+    connection.on('ReceiveAgentExecutionState', (conversationId: string, prompt: string, isActive: boolean) => {
+      console.log('SignalR: ReceiveAgentExecutionState', conversationId, prompt, isActive);
+      setActiveExecutionState(isActive ? { conversationId, prompt, isActive } : null);
     });
 
     connection.onclose(() => setIsConnected(false));
@@ -117,5 +129,7 @@ export const useSignalR = (hubUrl: string | null) => {
     setActiveApproval,
     incomingMessage,
     agentStatusUpdate,
+    activeExecutionState,
+    setActiveExecutionState,
   };
 };

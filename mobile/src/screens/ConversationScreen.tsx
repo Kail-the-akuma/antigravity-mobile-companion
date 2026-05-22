@@ -13,6 +13,7 @@ import {
   Alert,
   Modal,
   ScrollView,
+  SafeAreaView,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
@@ -52,7 +53,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const flatListRef = useRef<FlatList>(null);
 
   const hubUrl = `${hostUrl}/hubs/companion`;
-  const { isConnected, incomingMessage, activeApproval, setActiveApproval } = useSignalR(hubUrl);
+  const { isConnected, incomingMessage, activeApproval, setActiveApproval, activeExecutionState } = useSignalR(hubUrl);
 
   // Perform biometrics verification and sign the approval response
   const handleApprovalResponse = async (status: 'Approved' | 'Rejected') => {
@@ -172,6 +173,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
   }, [incomingMessage, conversationId]);
 
+  // Scroll to bottom when desktop agent starts executing
+  useEffect(() => {
+    if (activeExecutionState && activeExecutionState.conversationId === conversationId && activeExecutionState.isActive) {
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 250);
+    }
+  }, [activeExecutionState, conversationId]);
+
   const handleSend = useCallback(async () => {
     if (!input.trim() || !conversationId || sending) return;
 
@@ -213,35 +221,36 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   }
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
-          <Text style={styles.backArrow}>‹</Text>
-        </TouchableOpacity>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
+      <SafeAreaView style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+            <Text style={styles.backArrow}>‹</Text>
+          </TouchableOpacity>
 
-        <View style={styles.agentInfo}>
-          <Text style={styles.agentEmoji}>{agent.iconEmoji}</Text>
-          <View>
-            <Text style={styles.agentName}>{agent.name}</Text>
-            <View style={styles.statusRow}>
-              <View style={[styles.statusDot, { backgroundColor: isConnected ? Colors.success : Colors.danger }]} />
-              <Text style={styles.statusText}>
-                {isConnected ? (agent.isOnline ? 'Online' : 'Hub ligado') : 'Desconectado'}
-              </Text>
+          <View style={styles.agentInfo}>
+            <Text style={styles.agentEmoji}>{agent.iconEmoji}</Text>
+            <View>
+              <Text style={styles.agentName}>{agent.name}</Text>
+              <View style={styles.statusRow}>
+                <View style={[styles.statusDot, { backgroundColor: isConnected ? Colors.success : Colors.danger }]} />
+                <Text style={styles.statusText}>
+                  {isConnected ? (agent.isOnline ? 'Online' : 'Hub ligado') : 'Desconectado'}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
-      </View>
 
-      {/* Messages */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
+        {/* Messages */}
         <FlatList
           ref={flatListRef}
+          style={{ flex: 1 }}
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
@@ -269,14 +278,29 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             </View>
           }
           ListFooterComponent={
-            agentTyping ? (
-              <View style={styles.typingIndicator}>
-                <View style={styles.typingBubble}>
-                  <ActivityIndicator size="small" color={Colors.textMuted} />
-                  <Text style={styles.typingText}>A pensar...</Text>
+            <>
+              {activeExecutionState && activeExecutionState.conversationId === conversationId && activeExecutionState.isActive ? (
+                <View style={styles.executionCard}>
+                  <View style={styles.executionHeader}>
+                    <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />
+                    <Text style={styles.executionTitle}>Agente em Execução (Ambiente Remoto)</Text>
+                  </View>
+                  <Text style={styles.executionPrompt}>
+                    "{activeExecutionState.prompt}"
+                  </Text>
+                  <Text style={styles.executionStatus}>
+                    O agente está a processar no computador...
+                  </Text>
                 </View>
-              </View>
-            ) : null
+              ) : agentTyping ? (
+                <View style={styles.typingIndicator}>
+                  <View style={styles.typingBubble}>
+                    <ActivityIndicator size="small" color={Colors.textMuted} />
+                    <Text style={styles.typingText}>A pensar...</Text>
+                  </View>
+                </View>
+              ) : null}
+            </>
           }
         />
 
@@ -307,7 +331,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </SafeAreaView>
 
       {/* Cryptographically Protected Approval Modal Overlay */}
       {activeApproval && (
@@ -366,7 +390,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           </View>
         </Modal>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -398,7 +422,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 12 : 56,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 12 : 12,
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderColor: Colors.border,
@@ -498,7 +522,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 16,
     borderTopWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.surface,
@@ -629,5 +653,42 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  executionCard: {
+    backgroundColor: 'rgba(94, 92, 230, 0.08)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(94, 92, 230, 0.2)',
+    padding: 16,
+    marginHorizontal: 16,
+    marginVertical: 12,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  executionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  executionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  executionPrompt: {
+    fontSize: 14,
+    color: Colors.text,
+    fontStyle: 'italic',
+    lineHeight: 20,
+    marginBottom: 6,
+  },
+  executionStatus: {
+    fontSize: 12,
+    color: Colors.textMuted,
   },
 });

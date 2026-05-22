@@ -322,6 +322,22 @@ namespace AntigravityDaemon.Api.Controllers
             });
         }
 
+        public record AgentExecutingRequest(Guid ConversationId, string Prompt, bool IsActive);
+
+        // POST: api/conversations/remote/agent-executing
+        // Allows a local agent session (from the desktop IDE) to notify the mobile companion app of active thinking/processing.
+        [HttpPost("remote/agent-executing")]
+        public async Task<IActionResult> UpdateAgentExecutingState([FromBody] AgentExecutingRequest request)
+        {
+            await _hubContext.Clients.All.SendAsync(
+                "ReceiveAgentExecutionState",
+                request.ConversationId.ToString(),
+                request.Prompt,
+                request.IsActive
+            );
+            return Ok(new { message = "Execution state broadcasted successfully." });
+        }
+
         private static async Task<string> RunAgentCliAsync(string[] arguments)
         {
             string lsAddress = await ResolveAntigravityLsAddressAsync();
