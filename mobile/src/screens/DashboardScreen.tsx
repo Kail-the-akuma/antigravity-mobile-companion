@@ -41,7 +41,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onUnpair }) =>
   }, []);
 
   // Initialize SignalR Hub Connection (WebSockets)
-  const hubUrl = hostUrl ? `${hostUrl}/companionHub` : null;
+  const hubUrl = hostUrl ? `${hostUrl}/hubs/companion` : null;
   const { isConnected, tasks, setTasks, activeApproval, setActiveApproval } = useSignalR(hubUrl);
 
   // Fetch all tasks initially on mount/host load
