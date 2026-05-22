@@ -11,6 +11,7 @@ import {
   ScrollView,
   SafeAreaView,
   Alert,
+  Platform,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
