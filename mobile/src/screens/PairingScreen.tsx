@@ -20,7 +20,7 @@ interface PairingScreenProps {
 
 export const PairingScreen: React.FC<PairingScreenProps> = ({ onPairSuccess }) => {
   const [ip, setIp] = useState('');
-  const [port, setPort] = useState('5200');
+  const [port, setPort] = useState('5117');
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +105,7 @@ export const PairingScreen: React.FC<PairingScreenProps> = ({ onPairSuccess }) =
             <Text style={styles.label}>Porta</Text>
             <TextInput
               style={styles.input}
-              placeholder="5200"
+              placeholder="5117"
               placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
               value={port}

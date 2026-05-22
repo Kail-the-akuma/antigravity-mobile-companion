@@ -44,5 +44,29 @@ using (var scope = app.Services.CreateScope())
     db.Database.EnsureCreated();
 }
 
+// Auto-initialize pairing token on startup and print it
+var (token, ip, port, expiresAt) = AntigravityDaemon.Api.Controllers.PairingController.GenerateToken(5117);
+
+Console.ForegroundColor = ConsoleColor.Cyan;
+Console.WriteLine("========================================================================");
+Console.ForegroundColor = ConsoleColor.Green;
+Console.WriteLine("🚀 ANTIGRAVITY COMPANION DAEMON ACTIVE & READY");
+Console.ForegroundColor = ConsoleColor.Cyan;
+Console.WriteLine("========================================================================");
+Console.ForegroundColor = ConsoleColor.White;
+Console.WriteLine($"📡 HOST LAN IP:    {ip}");
+Console.WriteLine($"🔌 PORT:           {port}");
+Console.ForegroundColor = ConsoleColor.Yellow;
+Console.WriteLine($"🔑 PAIRING PIN:    {token}");
+Console.ForegroundColor = ConsoleColor.Gray;
+Console.WriteLine($"⏳ EXPIRES AT:     {expiresAt.ToLocalTime()} (Local Time)");
+Console.ForegroundColor = ConsoleColor.Cyan;
+Console.WriteLine("========================================================================");
+Console.ForegroundColor = ConsoleColor.White;
+Console.WriteLine("👉 Open the mobile app and enter the credentials above to pair!");
+Console.ForegroundColor = ConsoleColor.Cyan;
+Console.WriteLine("========================================================================");
+Console.ResetColor();
+
 app.Run();
 

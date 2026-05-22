@@ -20,14 +20,12 @@ namespace AntigravityDaemon.Api.Controllers
             _context = context;
         }
 
-        // Endpoint to initialize pairing (returns local info to build a QR Code)
-        [HttpPost("init")]
-        public IActionResult InitPairing()
+        public static (string Token, string Ip, int Port, DateTime ExpiresAt) GenerateToken(int port = 5117)
         {
-            // Generate a simple secure 6-digit pin/token
             var random = new Random();
             _activePairingToken = random.Next(100000, 999999).ToString();
-            _tokenExpiry = DateTime.UtcNow.AddMinutes(5); // Valid for 5 minutes
+            // Valid for 60 minutes for local pairing and development convenience
+            _tokenExpiry = DateTime.UtcNow.AddMinutes(60);
 
             // Retrieve local network IP
             string localIp = "127.0.0.1";
@@ -45,12 +43,20 @@ namespace AntigravityDaemon.Api.Controllers
                 // Fallback to localhost if no network connection
             }
 
+            return (_activePairingToken, localIp, port, _tokenExpiry);
+        }
+
+        // Endpoint to initialize pairing (returns local info to build a QR Code)
+        [HttpPost("init")]
+        public IActionResult InitPairing()
+        {
+            var (token, ip, port, expiresAt) = GenerateToken(5117);
             return Ok(new
             {
-                token = _activePairingToken,
-                ip = localIp,
-                port = 5200, // standard configured port
-                expiresAt = _tokenExpiry
+                token = token,
+                ip = ip,
+                port = port,
+                expiresAt = expiresAt
             });
         }
 
