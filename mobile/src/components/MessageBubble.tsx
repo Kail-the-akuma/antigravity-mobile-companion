@@ -21,6 +21,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     minute: '2-digit',
   });
 
+  const displayContent = role === 'agent' && content.length > 1500
+    ? content.substring(0, 1400) + '\n\n... *(Conteúdo longo omitido no telemóvel por performance)*'
+    : content;
+
   return (
     <View style={[styles.row, isUser ? styles.rowUser : styles.rowAgent]}>
       {/* Agent avatar — only for agent messages */}
@@ -32,7 +36,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAgent]}>
         <Text style={[styles.content, isUser ? styles.contentUser : styles.contentAgent]}>
-          {content}
+          {displayContent}
         </Text>
         <Text style={[styles.time, isUser ? styles.timeUser : styles.timeAgent]}>
           {formattedTime}
