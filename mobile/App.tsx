@@ -4,6 +4,7 @@ import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { Colors } from './src/theme/colors';
 import { PairingScreen } from './src/screens/PairingScreen';
 import { AgentListScreen } from './src/screens/AgentListScreen';
+import { ConversationListScreen } from './src/screens/ConversationListScreen';
 import { ConversationScreen } from './src/screens/ConversationScreen';
 import { ApiService } from './src/services/api';
 import { CryptoService } from './src/services/crypto';
@@ -18,12 +19,13 @@ interface Agent {
   lastPing: string;
 }
 
-type Screen = 'loading' | 'pairing' | 'agents' | 'conversation';
+type Screen = 'loading' | 'pairing' | 'agents' | 'conversations' | 'conversation';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [hostUrl, setHostUrl] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
 
   useEffect(() => {
     const checkPairingStatus = async () => {
@@ -54,18 +56,34 @@ export default function App() {
 
   const handleSelectAgent = (agent: Agent) => {
     setSelectedAgent(agent);
+    setScreen('conversations');
+  };
+
+  const handleSelectConversation = (conversationId: string) => {
+    setSelectedConversationId(conversationId);
+    setScreen('conversation');
+  };
+
+  const handleNewConversation = () => {
+    setSelectedConversationId(null);
     setScreen('conversation');
   };
 
   const handleUnpair = () => {
     setHostUrl(null);
     setSelectedAgent(null);
+    setSelectedConversationId(null);
     setScreen('pairing');
   };
 
   const handleBackToAgents = () => {
     setSelectedAgent(null);
     setScreen('agents');
+  };
+
+  const handleBackToConversations = () => {
+    setSelectedConversationId(null);
+    setScreen('conversations');
   };
 
   if (screen === 'loading') {
@@ -90,11 +108,20 @@ export default function App() {
             onUnpair={handleUnpair}
           />
         )}
+        {screen === 'conversations' && selectedAgent && (
+          <ConversationListScreen
+            agent={selectedAgent}
+            onSelectConversation={handleSelectConversation}
+            onNewConversation={handleNewConversation}
+            onBack={handleBackToAgents}
+          />
+        )}
         {screen === 'conversation' && hostUrl && selectedAgent && (
           <ConversationScreen
             agent={selectedAgent}
+            conversationId={selectedConversationId}
             hostUrl={hostUrl}
-            onBack={handleBackToAgents}
+            onBack={handleBackToConversations}
           />
         )}
       </View>

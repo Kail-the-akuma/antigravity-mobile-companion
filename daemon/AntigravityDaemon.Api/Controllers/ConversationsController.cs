@@ -111,10 +111,14 @@ namespace AntigravityDaemon.Api.Controllers
 
             var messages = await _context.ConversationMessages
                 .Where(m => m.ConversationId == id)
-                .OrderBy(m => m.Timestamp)
+                .OrderByDescending(m => m.Timestamp)
+                .Take(10)
                 .ToListAsync();
 
-            return Ok(messages);
+            // Order chronologically for client-side display
+            var chronologicalMessages = messages.OrderBy(m => m.Timestamp).ToList();
+
+            return Ok(chronologicalMessages);
         }
 
         public record SendMessageRequest(string Content);
@@ -211,6 +215,7 @@ namespace AntigravityDaemon.Api.Controllers
         {
             string lsAddress = await ResolveAntigravityLsAddressAsync();
             string csrfToken = await ResolveAntigravityCsrfTokenAsync();
+            string? projectId = await ResolveAntigravityProjectIdAsync();
 
             var startInfo = new ProcessStartInfo
             {
@@ -227,24 +232,34 @@ namespace AntigravityDaemon.Api.Controllers
                 startInfo.ArgumentList.Add(arg);
             }
             
-            startInfo.EnvironmentVariables["ANTIGRAVITY_LS_ADDRESS"] = lsAddress;
-            startInfo.EnvironmentVariables["ANTIGRAVITY_CSRF_TOKEN"] = csrfToken;
-
-            // Clear any internal parent environment variables that might interfere with language_server.exe
-            var keysToRemove = new List<string>();
-            foreach (string key in startInfo.EnvironmentVariables.Keys)
+            // Clear and explicitly populate environment variables to isolate from parent IDE session
+            startInfo.EnvironmentVariables.Clear();
+            foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
             {
-                if (key.StartsWith("ANTIGRAVITY_", StringComparison.OrdinalIgnoreCase) &&
-                    key != "ANTIGRAVITY_LS_ADDRESS" &&
-                    key != "ANTIGRAVITY_CSRF_TOKEN")
+                string key = entry.Key?.ToString() ?? string.Empty;
+                string val = entry.Value?.ToString() ?? string.Empty;
+
+                if (string.IsNullOrEmpty(key)) continue;
+
+                if (key.StartsWith("ANTIGRAVITY_", StringComparison.OrdinalIgnoreCase) ||
+                    key.StartsWith("AGY_", StringComparison.OrdinalIgnoreCase))
                 {
-                    keysToRemove.Add(key);
+                    // Copy existing project metadata so language_server knows which environment to target
+                    if (key.Equals("ANTIGRAVITY_SOURCE_METADATA", StringComparison.OrdinalIgnoreCase))
+                    {
+                        startInfo.EnvironmentVariables[key] = val;
+                    }
+                    continue;
                 }
+
+                startInfo.EnvironmentVariables[key] = val;
             }
 
-            foreach (var key in keysToRemove)
+            startInfo.EnvironmentVariables["ANTIGRAVITY_LS_ADDRESS"] = lsAddress;
+            startInfo.EnvironmentVariables["ANTIGRAVITY_CSRF_TOKEN"] = csrfToken;
+            if (!string.IsNullOrEmpty(projectId))
             {
-                startInfo.EnvironmentVariables.Remove(key);
+                startInfo.EnvironmentVariables["ANTIGRAVITY_PROJECT_ID"] = projectId;
             }
 
             using var process = new Process { StartInfo = startInfo };
@@ -463,6 +478,32 @@ namespace AntigravityDaemon.Api.Controllers
             }
 
             throw new Exception("ANTIGRAVITY_CSRF_TOKEN is not set and could not be resolved from environment variables or active logs.");
+        }
+
+        private static Task<string?> ResolveAntigravityProjectIdAsync()
+        {
+            // 1. Process environment
+            string? envProjectId = Environment.GetEnvironmentVariable("ANTIGRAVITY_PROJECT_ID");
+            if (!string.IsNullOrEmpty(envProjectId))
+            {
+                return Task.FromResult<string?>(envProjectId);
+            }
+
+            // 2. User environment
+            string? userProjectId = Environment.GetEnvironmentVariable("ANTIGRAVITY_PROJECT_ID", EnvironmentVariableTarget.User);
+            if (!string.IsNullOrEmpty(userProjectId))
+            {
+                return Task.FromResult<string?>(userProjectId);
+            }
+
+            // 3. Machine environment
+            string? machineProjectId = Environment.GetEnvironmentVariable("ANTIGRAVITY_PROJECT_ID", EnvironmentVariableTarget.Machine);
+            if (!string.IsNullOrEmpty(machineProjectId))
+            {
+                return Task.FromResult<string?>(machineProjectId);
+            }
+
+            return Task.FromResult<string?>(null);
         }
 
         private static async Task<string> RunAgentNewConversationAsync(string prompt)

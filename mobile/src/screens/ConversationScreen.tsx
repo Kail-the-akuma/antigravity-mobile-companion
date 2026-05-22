@@ -25,16 +25,18 @@ interface Agent {
 
 interface ConversationScreenProps {
   agent: Agent;
+  conversationId: string | null;
   hostUrl: string;
   onBack: () => void;
 }
 
 export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   agent,
+  conversationId: initialConversationId,
   hostUrl,
   onBack,
 }) => {
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -50,11 +52,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   useEffect(() => {
     const initConversation = async () => {
       try {
-        const conv = await ApiService.createConversation(agent.id, `Conversa com ${agent.name}`);
-        setConversationId(conv.id);
+        let activeId = initialConversationId;
+        if (!activeId) {
+          const conv = await ApiService.createConversation(agent.id, `Conversa com ${agent.name}`);
+          activeId = conv.id;
+          setConversationId(activeId);
+        }
 
         // Fetch existing messages if any
-        const existingMessages = await ApiService.getMessages(conv.id);
+        const existingMessages = await ApiService.getMessages(activeId);
         const mapped = existingMessages.map((m: any) => ({
           id: m.id,
           conversationId: m.conversationId,
@@ -62,7 +68,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           content: m.content,
           timestamp: m.timestamp,
         }));
-        setMessages(mapped);
+        setMessages(mapped.slice(-10));
       } catch (err: any) {
         console.error('Error initializing conversation:', err);
       } finally {
@@ -71,7 +77,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     };
 
     initConversation();
-  }, [agent.id, agent.name]);
+  }, [agent.id, agent.name, initialConversationId]);
+
+  // Scroll to bottom when conversation is opened and finished loading
+  useEffect(() => {
+    if (!initializing && messages.length > 0) {
+      const timer = setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [initializing, messages.length]);
 
   // Handle real-time messages from SignalR
   useEffect(() => {
@@ -82,7 +98,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     setMessages((prev) => {
       // Deduplicate — skip if already in state
       if (prev.find((m) => m.id === incomingMessage.id)) return prev;
-      return [...prev, incomingMessage];
+      return [...prev, incomingMessage].slice(-10);
     });
 
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
@@ -103,7 +119,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       content: text,
       timestamp: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, optimisticMsg]);
+    setMessages((prev) => [...prev, optimisticMsg].slice(-10));
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
