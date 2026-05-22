@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("AntigravityDaemon.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cbd3736ee3d985e4ae34999002ce6eff9dc2ce09")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7eb350ff70a3a74ca1aec4fa1bcf900a5bed69ba")]
 [assembly: System.Reflection.AssemblyProductAttribute("AntigravityDaemon.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("AntigravityDaemon.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
