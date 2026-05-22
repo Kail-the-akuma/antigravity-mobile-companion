@@ -3,6 +3,7 @@ using AntigravityDaemon.Data;
 using AntigravityDaemon.Api.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls("http://0.0.0.0:5117");
 
 // Add services to the container.
 builder.Services.AddControllers();
