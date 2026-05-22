@@ -174,11 +174,56 @@ Console.ForegroundColor = ConsoleColor.Cyan;
 Console.WriteLine("========================================================================");
 Console.ResetColor();
 
-// Run the ASP.NET Core app in the background
-Task.Run(() => app.Run());
+// Start the ASP.NET Core web server synchronously (blocks until listening starts)
+try
+{
+    Console.ForegroundColor = ConsoleColor.Cyan;
+    Console.WriteLine("🌐 Starting web server on http://0.0.0.0:5117...");
+    Console.ResetColor();
+    app.Start();
 
-// Wait slightly for the Kestrel server to warm up and spin up sockets
-Thread.Sleep(800);
+    // Automatically open the default system web browser to the dashboard as a 100% reliable failsafe
+    try
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("🌐 Opening dashboard in default system browser: http://127.0.0.1:5117/index.html");
+        Console.ResetColor();
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "http://127.0.0.1:5117/index.html",
+            UseShellExecute = true
+        });
+    }
+    catch (Exception browserEx)
+    {
+        // Fallback for environments where UseShellExecute has strict privilege controls
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "cmd",
+                Arguments = "/c start http://127.0.0.1:5117/index.html",
+                CreateNoWindow = true,
+                UseShellExecute = false
+            });
+        }
+        catch
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"⚠️ Could not open default browser: {browserEx.Message}");
+            Console.ResetColor();
+        }
+    }
+}
+catch (Exception ex)
+{
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine($"❌ CRITICAL: Failed to start web server on port 5117: {ex.Message}");
+    Console.WriteLine("This is usually because another instance of Antigravity or another app is already using port 5117.");
+    Console.WriteLine("Please close any conflicting apps and try again.");
+    Console.ResetColor();
+    return;
+}
 
 // Initialize Photino.NET Window
 try
@@ -187,12 +232,18 @@ try
     Console.WriteLine("🖥️  LAUNCHING NATIVE DESKTOP DASHBOARD...");
     Console.ResetColor();
 
+    var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    var tempPath = Path.Combine(localAppData, "AntigravityCompanion", "WebView2_Profile");
+    Directory.CreateDirectory(tempPath);
+
     var window = new PhotinoWindow()
         .SetTitle("Antigravity Companion - Desktop Control Center")
         .SetUseOsDefaultSize(false)
         .SetSize(1200, 800)
         .Center()
-        .Load("http://localhost:5117/index.html");
+        .SetBrowserControlInitParameters("--disable-gpu --disable-gpu-compositing --disable-gpu-rasterization --use-software-rasterizer")
+        .SetTemporaryFilesPath(tempPath)
+        .Load("http://127.0.0.1:5117/index.html");
 
     // Start native GUI message loop (blocks until window is closed)
     window.WaitForClose();
@@ -200,6 +251,9 @@ try
     Console.ForegroundColor = ConsoleColor.Yellow;
     Console.WriteLine("🔌 Native GUI window closed. Shutting down daemon backend...");
     Console.ResetColor();
+
+    // Cleanly stop the web server
+    app.StopAsync().GetAwaiter().GetResult();
 }
 catch (Exception ex)
 {
