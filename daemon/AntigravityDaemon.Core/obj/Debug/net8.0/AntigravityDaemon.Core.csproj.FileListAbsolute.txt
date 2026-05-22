@@ -1,0 +1,11 @@
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\bin\Debug\net8.0\AntigravityDaemon.Core.deps.json
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\bin\Debug\net8.0\AntigravityDaemon.Core.dll
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\bin\Debug\net8.0\AntigravityDaemon.Core.pdb
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\obj\Debug\net8.0\AntigravityDaemon.Core.GeneratedMSBuildEditorConfig.editorconfig
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\obj\Debug\net8.0\AntigravityDaemon.Core.AssemblyInfoInputs.cache
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\obj\Debug\net8.0\AntigravityDaemon.Core.AssemblyInfo.cs
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\obj\Debug\net8.0\AntigravityDaemon.Core.csproj.CoreCompileInputs.cache
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\obj\Debug\net8.0\AntigravityDaemon.Core.dll
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\obj\Debug\net8.0\refint\AntigravityDaemon.Core.dll
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\obj\Debug\net8.0\AntigravityDaemon.Core.pdb
+c:\Users\Hugo\Documents\GitHub\AntigravityMobileCompanion\daemon\AntigravityDaemon.Core\obj\Debug\net8.0\ref\AntigravityDaemon.Core.dll
