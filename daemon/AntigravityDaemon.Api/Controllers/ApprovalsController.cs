@@ -80,6 +80,47 @@ namespace AntigravityDaemon.Api.Controllers
             return StatusCode(408, new { message = "Timeout waiting for user response." });
         }
 
+        // POST: api/approvals/simulate (Helper endpoint to test end-to-end flow with a single click)
+        [HttpPost("simulate")]
+        public async Task<IActionResult> SimulateApproval()
+        {
+            // 1. Create a mock task
+            var task = new TaskItem
+            {
+                Prompt = "Refatorar módulo de autenticação e adicionar testes unitários",
+                Status = "Running",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _context.Tasks.Add(task);
+            await _context.SaveChangesAsync();
+
+            // 2. Create approval request
+            var approval = new ApprovalRequest
+            {
+                TaskId = task.Id,
+                PlanStepsJson = "[\n  \"1. Criar novo ficheiro de testes em tests/auth.spec.ts\",\n  \"2. Implementar mocks de base de dados para utilizador\",\n  \"3. Executar testes e validar cobertura de 95%\"\n]",
+                Status = "Pending",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _context.Approvals.Add(approval);
+            await _context.SaveChangesAsync();
+
+            // Broadcast the new task to the mobile client
+            await _hubContext.Clients.All.SendAsync("ReceiveTaskUpdate", task.Id.ToString(), task.Status, task.PlanJson);
+
+            // Broadcast the approval request
+            await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", approval.Id.ToString(), approval.TaskId.ToString(), approval.PlanStepsJson);
+
+            return Ok(new
+            {
+                message = "Simulação iniciada! Verifique o ecrã do seu telemóvel.",
+                taskId = task.Id,
+                approvalId = approval.Id
+            });
+        }
+
         public record RespondApprovalPayload(string Status, string Signature);
 
         // POST: api/approvals/{id}/respond (Called remotely by the Mobile Companion App to approve/reject)
