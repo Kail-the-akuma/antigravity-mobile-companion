@@ -17,12 +17,13 @@ export interface ApprovalRequest {
   planStepsJson: string;
   status: string;
   createdAt: string;
+  conversationId?: string;
 }
 
 export interface ChatMessage {
   id: string;
   conversationId: string;
-  role: 'user' | 'agent';
+  role: 'user' | 'agent' | 'user-ide';
   content: string;
   timestamp: string;
 }
@@ -71,13 +72,14 @@ export const useSignalR = (hubUrl: string | null) => {
       });
     });
 
-    connection.on('ReceiveApprovalRequest', (id: string, taskId: string, planStepsJson: string) => {
+    connection.on('ReceiveApprovalRequest', (id: string, taskId: string, planStepsJson: string, conversationId?: string) => {
       setActiveApproval({
         id,
         taskId,
         planStepsJson,
         status: 'Pending',
         createdAt: new Date().toISOString(),
+        conversationId,
       });
     });
 
@@ -86,7 +88,7 @@ export const useSignalR = (hubUrl: string | null) => {
       setIncomingMessage({
         id: messageId,
         conversationId,
-        role: role as 'user' | 'agent',
+        role: role as 'user' | 'agent' | 'user-ide',
         content,
         timestamp,
       });

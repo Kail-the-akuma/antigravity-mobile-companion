@@ -8,6 +8,8 @@ namespace AntigravityDaemon.Core.Models
         public Guid TaskId { get; set; }
         public TaskItem Task { get; set; } = null!;
         public string PlanStepsJson { get; set; } = "[]";
+        public Guid? ConversationId { get; set; }
+        public Conversation? Conversation { get; set; }
         public string Status { get; set; } = "Pending"; // Pending, Approved, Rejected
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

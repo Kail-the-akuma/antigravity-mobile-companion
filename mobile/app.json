@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "Antigravity Companion",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,19 +10,28 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.antigravity.companion",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#0F0F11",
+        "foregroundImage": "./assets/icon.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "updates": {
+      "url": "https://u.expo.dev/02302d20-3980-4319-806e-8cf4b8e6983d"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "02302d20-3980-4319-806e-8cf4b8e6983d"
+      }
+    },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-updates"
     ]
   }
 }

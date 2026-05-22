@@ -7,6 +7,10 @@ using AntigravityDaemon.Api.Filters;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Threading.Tasks;
+using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 
 namespace AntigravityDaemon.Api.Controllers
 {
@@ -16,11 +20,13 @@ namespace AntigravityDaemon.Api.Controllers
     {
         private readonly DaemonDbContext _context;
         private readonly IHubContext<CompanionHub> _hubContext;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        public ApprovalsController(DaemonDbContext context, IHubContext<CompanionHub> hubContext)
+        public ApprovalsController(DaemonDbContext context, IHubContext<CompanionHub> hubContext, IHttpClientFactory httpClientFactory)
         {
             _context = context;
             _hubContext = hubContext;
+            _httpClientFactory = httpClientFactory;
         }
 
         public record RequestApprovalPayload(Guid? TaskId, string PlanStepsJson, string? Prompt);
@@ -59,10 +65,17 @@ namespace AntigravityDaemon.Api.Controllers
                 }
             }
 
+            // Find the active executing conversation in the DB (the most recently updated conversation)
+            var activeConversation = await _context.Conversations
+                .OrderByDescending(c => c.UpdatedAt)
+                .FirstOrDefaultAsync();
+            Guid? conversationId = activeConversation?.Id;
+
             var approval = new ApprovalRequest
             {
                 TaskId = resolvedTaskId,
                 PlanStepsJson = payload.PlanStepsJson,
+                ConversationId = conversationId,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -72,7 +85,47 @@ namespace AntigravityDaemon.Api.Controllers
             await _context.SaveChangesAsync();
 
             // Broadcast the approval request to the Mobile Companion App via WebSockets
-            await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", approval.Id.ToString(), approval.TaskId.ToString(), approval.PlanStepsJson);
+            await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", approval.Id.ToString(), approval.TaskId.ToString(), approval.PlanStepsJson, conversationId?.ToString());
+
+            // Fire and forget push notification delivery to all registered device tokens
+            var pushTokens = await _context.TrustedDevices
+                .Where(d => d.PushToken != null && d.PushToken != "")
+                .Select(d => d.PushToken)
+                .ToListAsync();
+
+            if (pushTokens.Any())
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var client = _httpClientFactory.CreateClient();
+                        var payloadList = pushTokens.Select(token => new
+                        {
+                            to = token,
+                            sound = "default",
+                            title = "⚡ Antigravity - Pedido de Aprovação",
+                            body = payload.Prompt ?? "Solicitação de permissão ativa para o projeto.",
+                            data = new
+                            {
+                                type = "ReceiveApprovalRequest",
+                                approvalId = approval.Id.ToString(),
+                                taskId = approval.TaskId.ToString(),
+                                planStepsJson = approval.PlanStepsJson,
+                                conversationId = conversationId?.ToString()
+                            }
+                        }).ToList();
+
+                        var json = JsonSerializer.Serialize(payloadList);
+                        var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                        await client.PostAsync("https://exp.host/--/api/v2/push/send", content);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to send push notification: {ex.Message}");
+                    }
+                });
+            }
 
             // Block and poll the database for user response (Long Polling Pattern)
             int timeoutSeconds = 120; // 2 minutes timeout
@@ -120,10 +173,16 @@ namespace AntigravityDaemon.Api.Controllers
             await _context.SaveChangesAsync();
 
             // 2. Create approval request
+            var activeConversation = await _context.Conversations
+                .OrderByDescending(c => c.UpdatedAt)
+                .FirstOrDefaultAsync();
+            Guid? conversationId = activeConversation?.Id;
+
             var approval = new ApprovalRequest
             {
                 TaskId = task.Id,
                 PlanStepsJson = "[\n  \"1. Criar novo ficheiro de testes em tests/auth.spec.ts\",\n  \"2. Implementar mocks de base de dados para utilizador\",\n  \"3. Executar testes e validar cobertura de 95%\"\n]",
+                ConversationId = conversationId,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -135,7 +194,47 @@ namespace AntigravityDaemon.Api.Controllers
             await _hubContext.Clients.All.SendAsync("ReceiveTaskUpdate", task.Id.ToString(), task.Status, task.PlanJson);
 
             // Broadcast the approval request
-            await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", approval.Id.ToString(), approval.TaskId.ToString(), approval.PlanStepsJson);
+            await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", approval.Id.ToString(), approval.TaskId.ToString(), approval.PlanStepsJson, conversationId?.ToString());
+
+            // Fire and forget push notification simulation delivery
+            var pushTokens = await _context.TrustedDevices
+                .Where(d => d.PushToken != null && d.PushToken != "")
+                .Select(d => d.PushToken)
+                .ToListAsync();
+
+            if (pushTokens.Any())
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var client = _httpClientFactory.CreateClient();
+                        var payloadList = pushTokens.Select(token => new
+                        {
+                            to = token,
+                            sound = "default",
+                            title = "⚡ Antigravity - Pedido de Aprovação (Simulação)",
+                            body = "Solicitação de permissão ativa (Simulação).",
+                            data = new
+                            {
+                                type = "ReceiveApprovalRequest",
+                                approvalId = approval.Id.ToString(),
+                                taskId = approval.TaskId.ToString(),
+                                planStepsJson = approval.PlanStepsJson,
+                                conversationId = conversationId?.ToString()
+                            }
+                        }).ToList();
+
+                        var json = JsonSerializer.Serialize(payloadList);
+                        var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                        await client.PostAsync("https://exp.host/--/api/v2/push/send", content);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to send push notification simulation: {ex.Message}");
+                    }
+                });
+            }
 
             return Ok(new
             {
@@ -170,6 +269,279 @@ namespace AntigravityDaemon.Api.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { message = $"Approval request processed as: {payload.Status}" });
+        }
+
+        public class TranscriptLine
+        {
+            public int step_index { get; set; }
+            public string? source { get; set; }
+            public string? type { get; set; }
+            public string? status { get; set; }
+            public string? content { get; set; }
+            public string? created_at { get; set; }
+            public object? tool_calls { get; set; }
+        }
+
+        [HttpGet("/api/conversations/{id}/implementation-plan")]
+        [AuthorizeDevice]
+        public async Task<IActionResult> GetImplementationPlan(Guid id)
+        {
+            var conversation = await _context.Conversations.FindAsync(id);
+            if (conversation == null) return NotFound("Conversation not found.");
+
+            string remoteId = conversation.RemoteConversationId ?? id.ToString();
+            string planPath = Path.Combine(@"C:\Users\Hugo\.gemini\antigravity\brain", remoteId, "implementation_plan.md");
+
+            if (!System.IO.File.Exists(planPath))
+            {
+                return NotFound("Implementation plan not found.");
+            }
+
+            try
+            {
+                var lines = await System.IO.File.ReadAllLinesAsync(planPath);
+                
+                string goal = "";
+                string reviewRequired = "";
+                string openQuestions = "";
+                var proposedChanges = new List<object>();
+                string verificationPlan = "";
+                var comments = new List<object>();
+
+                string currentSection = "";
+                string currentComponent = "Geral";
+
+                foreach (var line in lines)
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith("## "))
+                    {
+                        currentSection = trimmed.Substring(3).Trim();
+                        continue;
+                    }
+                    else if (trimmed.StartsWith("# ") && string.IsNullOrEmpty(goal))
+                    {
+                        goal = trimmed.Substring(2).Trim() + "\n";
+                        currentSection = "Goal";
+                        continue;
+                    }
+                    else if (trimmed.StartsWith("### "))
+                    {
+                        currentComponent = trimmed.Substring(4).Trim();
+                        continue;
+                    }
+
+                    if (currentSection == "Goal")
+                    {
+                        goal += line + "\n";
+                    }
+                    else if (currentSection == "User Review Required")
+                    {
+                        reviewRequired += line + "\n";
+                    }
+                    else if (currentSection == "Open Questions")
+                    {
+                        openQuestions += line + "\n";
+                    }
+                    else if (currentSection == "Proposed Changes")
+                    {
+                        if (trimmed.StartsWith("#### "))
+                        {
+                            string raw = trimmed.Substring(5).Trim();
+                            string action = "MODIFY";
+                            if (raw.StartsWith("[NEW]")) action = "NEW";
+                            else if (raw.StartsWith("[DELETE]")) action = "DELETE";
+
+                            int linkStartIndex = raw.IndexOf('(');
+                            int linkEndIndex = raw.LastIndexOf(')');
+                            string filePath = "";
+                            string fileName = "";
+
+                            if (linkStartIndex != -1 && linkEndIndex != -1 && linkEndIndex > linkStartIndex)
+                            {
+                                filePath = raw.Substring(linkStartIndex + 1, linkEndIndex - linkStartIndex - 1);
+                                int textStartIndex = raw.IndexOf('[');
+                                int textEndIndex = raw.IndexOf(']');
+                                int secondBracketStart = raw.IndexOf('[', textEndIndex + 1);
+                                int secondBracketEnd = raw.IndexOf(']', textEndIndex + 1);
+                                if (secondBracketStart != -1 && secondBracketEnd != -1 && secondBracketEnd > secondBracketStart)
+                                {
+                                    fileName = raw.Substring(secondBracketStart + 1, secondBracketEnd - secondBracketStart - 1);
+                                }
+                                else
+                                {
+                                    fileName = Path.GetFileName(filePath);
+                                }
+                            }
+
+                            proposedChanges.Add(new
+                            {
+                                component = currentComponent,
+                                action = action,
+                                fileName = fileName,
+                                filePath = filePath
+                            });
+                        }
+                    }
+                    else if (currentSection == "Verification Plan")
+                    {
+                        verificationPlan += line + "\n";
+                    }
+                    else if (currentSection.Contains("Feedback do Telemóvel") || currentSection.Contains("Feedback"))
+                    {
+                        if (trimmed.StartsWith("- "))
+                        {
+                            string rawComment = trimmed.Substring(2).Trim();
+                            string section = "general";
+                            string author = "Utilizador";
+                            string text = rawComment;
+
+                            if (rawComment.StartsWith("**["))
+                            {
+                                int closeBracket = rawComment.IndexOf("]**:");
+                                if (closeBracket != -1)
+                                {
+                                    section = rawComment.Substring(3, closeBracket - 3);
+                                    text = rawComment.Substring(closeBracket + 4).Trim();
+                                }
+                            }
+
+                            comments.Add(new
+                            {
+                                section = section,
+                                author = author,
+                                text = text
+                            });
+                        }
+                    }
+                }
+
+                return Ok(new
+                {
+                    goal = goal.Trim(),
+                    reviewRequired = reviewRequired.Trim(),
+                    openQuestions = openQuestions.Trim(),
+                    proposedChanges = proposedChanges,
+                    verificationPlan = verificationPlan.Trim(),
+                    comments = comments
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error parsing implementation plan: {ex.Message}");
+            }
+        }
+
+        public record AddCommentPayload(string Section, string CommentText);
+
+        [HttpPost("/api/conversations/{id}/implementation-plan/comments")]
+        [AuthorizeDevice]
+        public async Task<IActionResult> AddImplementationPlanComment(Guid id, [FromBody] AddCommentPayload payload)
+        {
+            if (string.IsNullOrWhiteSpace(payload.CommentText))
+            {
+                return BadRequest("Comment text cannot be empty.");
+            }
+
+            var conversation = await _context.Conversations.FindAsync(id);
+            if (conversation == null) return NotFound("Conversation not found.");
+
+            string remoteId = conversation.RemoteConversationId ?? id.ToString();
+            string planPath = Path.Combine(@"C:\Users\Hugo\.gemini\antigravity\brain", remoteId, "implementation_plan.md");
+
+            if (!System.IO.File.Exists(planPath))
+            {
+                return NotFound("Implementation plan not found.");
+            }
+
+            try
+            {
+                string planContent = await System.IO.File.ReadAllTextAsync(planPath);
+                string feedbackHeader = "## 💬 Feedback do Telemóvel";
+                
+                string newCommentLine = $"- **[{payload.Section}]**: {payload.CommentText}";
+
+                if (planContent.Contains(feedbackHeader))
+                {
+                    int headerIndex = planContent.IndexOf(feedbackHeader);
+                    string before = planContent.Substring(0, headerIndex + feedbackHeader.Length);
+                    string after = planContent.Substring(headerIndex + feedbackHeader.Length);
+                    
+                    planContent = before + "\n" + newCommentLine + after;
+                }
+                else
+                {
+                    planContent = planContent.TrimEnd() + "\n\n" + feedbackHeader + "\n" + newCommentLine + "\n";
+                }
+
+                await System.IO.File.WriteAllTextAsync(planPath, planContent);
+
+                string logsDir = Path.Combine(@"C:\Users\Hugo\.gemini\antigravity\brain", remoteId, ".system_generated", "logs");
+                string logPath = Path.Combine(logsDir, "transcript.jsonl");
+
+                if (System.IO.File.Exists(logPath))
+                {
+                    int nextStepIndex = 1;
+                    try
+                    {
+                        var lastLines = await System.IO.File.ReadAllLinesAsync(logPath);
+                        for (int i = lastLines.Length - 1; i >= 0; i--)
+                        {
+                            var line = lastLines[i];
+                            if (string.IsNullOrWhiteSpace(line)) continue;
+                            var parsed = JsonSerializer.Deserialize<TranscriptLine>(line);
+                            if (parsed != null)
+                            {
+                                nextStepIndex = parsed.step_index + 1;
+                                break;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error determining step index: {ex.Message}");
+                    }
+
+                    var newLogEntry = new
+                    {
+                        step_index = nextStepIndex,
+                        source = "USER_EXPLICIT",
+                        type = "USER_INPUT",
+                        status = "DONE",
+                        content = $"💬 [Comentário do Telemóvel - {payload.Section}]: {payload.CommentText}",
+                        created_at = DateTime.UtcNow.ToString("o")
+                    };
+
+                    string jsonLine = JsonSerializer.Serialize(newLogEntry) + "\n";
+                    await System.IO.File.AppendAllTextAsync(logPath, jsonLine);
+
+                    var commentMessage = new ConversationMessage
+                    {
+                        ConversationId = id,
+                        Role = "user-ide",
+                        Content = $"💬 **Comentário do Telemóvel ({payload.Section})**: {payload.CommentText}",
+                        Timestamp = DateTime.UtcNow
+                    };
+                    _context.ConversationMessages.Add(commentMessage);
+                    conversation.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+
+                    await _hubContext.Clients.All.SendAsync(
+                        "ReceiveMessage",
+                        id.ToString(),
+                        commentMessage.Id.ToString(),
+                        "user-ide",
+                        commentMessage.Content,
+                        commentMessage.Timestamp.ToString("o")
+                    );
+                }
+
+                return Ok(new { message = "Comment successfully added." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error writing comment: {ex.Message}");
+            }
         }
     }
 }

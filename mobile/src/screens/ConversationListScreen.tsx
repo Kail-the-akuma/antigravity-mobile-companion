@@ -1,28 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  StyleSheet,
   Text,
   View,
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Platform,
-  StatusBar,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
-
-interface Conversation {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  agentId: string;
-  agentName: string;
-  agentEmoji: string;
-  lastMessage: string;
-}
+import { ConversationCard, Conversation } from '../components/ConversationCard';
+import { styles } from './ConversationListScreen.styles';
 
 interface Agent {
   id: string;
@@ -35,6 +24,8 @@ interface ConversationListScreenProps {
   onSelectConversation: (conversationId: string) => void;
   onNewConversation: () => void;
   onBack: () => void;
+  onOpenDeletedConversations: () => void;
+  pendingApprovals?: Record<string, any>;
 }
 
 export const ConversationListScreen: React.FC<ConversationListScreenProps> = ({
@@ -42,6 +33,8 @@ export const ConversationListScreen: React.FC<ConversationListScreenProps> = ({
   onSelectConversation,
   onNewConversation,
   onBack,
+  onOpenDeletedConversations,
+  pendingApprovals,
 }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +44,12 @@ export const ConversationListScreen: React.FC<ConversationListScreenProps> = ({
     try {
       const data = await ApiService.getConversations();
       // Filter conversations for the selected agent
-      const filtered = data.filter((c: any) => c.agentId === agent.id);
+      const filtered = data
+        .filter((c: any) => c.agentId === agent.id)
+        .map((c: any) => ({
+          ...c,
+          isPinned: c.isPinned ?? false,
+        }));
       setConversations(filtered);
     } catch (err: any) {
       console.error('Error fetching conversations:', err);
@@ -65,23 +63,51 @@ export const ConversationListScreen: React.FC<ConversationListScreenProps> = ({
     fetchConversations();
   }, [fetchConversations]);
 
-  const formatTime = (isoString: string): string => {
+  const handleTogglePin = async (id: string) => {
     try {
-      const date = new Date(isoString);
-      const now = new Date();
-      
-      const diffMs = now.getTime() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      
-      if (diffMins < 1) return 'Agora';
-      if (diffMins < 60) return `Há ${diffMins} min`;
-      if (diffHours < 24) return `Há ${diffHours} h`;
-      
-      return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
-    } catch {
-      return '';
+      // Optimistic update
+      setConversations(prev =>
+        prev
+          .map(c => (c.id === id ? { ...c, isPinned: !c.isPinned } : c))
+          .sort((a, b) => {
+            const aPinned = a.isPinned ? 1 : 0;
+            const bPinned = b.isPinned ? 1 : 0;
+            if (aPinned !== bPinned) return bPinned - aPinned;
+            return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+          })
+      );
+      await ApiService.togglePinConversation(id);
+    } catch (err) {
+      console.error('Error toggling pin:', err);
+      Alert.alert('Erro', 'Não foi possível atualizar o estado de fixação.');
+      fetchConversations();
     }
+  };
+
+  const handleDelete = (id: string) => {
+    Alert.alert(
+      'Eliminar Conversa',
+      'Tens a certeza que pretendes eliminar esta conversa? Esta ação removerá a conversa do telemóvel permanentemente.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Optimistic update
+              setConversations(prev => prev.filter(c => c.id !== id));
+              await ApiService.deleteConversation(id);
+            } catch (err) {
+              console.error('Error deleting conversation:', err);
+              Alert.alert('Erro', 'Não foi possível eliminar a conversa.');
+              fetchConversations();
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   return (
@@ -96,227 +122,78 @@ export const ConversationListScreen: React.FC<ConversationListScreenProps> = ({
           <Text style={styles.agentEmoji}>{agent.iconEmoji}</Text>
           <View>
             <Text style={styles.headerTitle}>{agent.name}</Text>
-            <Text style={styles.headerSubtitle}>Conversas Ativas</Text>
+            <View style={styles.statusBadgeRow}>
+              <View style={styles.onlineDot} />
+              <Text style={styles.headerSubtitle}>Ativo localmente</Text>
+            </View>
           </View>
         </View>
+
+        <TouchableOpacity onPress={onOpenDeletedConversations} style={styles.trashButton} activeOpacity={0.7}>
+          <Text style={styles.trashText}>🗑️</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* New Conversation Button */}
-      <TouchableOpacity
-        style={styles.newConvButton}
-        onPress={onNewConversation}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.newConvEmoji}>⚡</Text>
-        <View style={styles.newConvTextContainer}>
-          <Text style={styles.newConvTitle}>Nova Conversa</Text>
-          <Text style={styles.newConvSubtitle}>Inicia um novo ciclo de agente no workspace</Text>
-        </View>
-        <Text style={styles.newConvArrow}>›</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.sectionTitle}>Histórico de Conversas</Text>
-
-      {/* List */}
-      {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>A carregar conversas...</Text>
-        </View>
-      ) : conversations.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.emptyEmoji}>💬</Text>
-          <Text style={styles.emptyTitle}>Sem conversas ainda</Text>
-          <Text style={styles.emptyText}>
-            Começa uma nova conversa com {agent.name} para interagir com o seu ambiente local.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={conversations}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
+      <FlatList
+        data={conversations}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); fetchConversations(); }}
+            tintColor={Colors.primary}
+          />
+        }
+        ListHeaderComponent={
+          <>
+            {/* New Conversation Button */}
             <TouchableOpacity
-              style={styles.convCard}
-              onPress={() => onSelectConversation(item.id)}
-              activeOpacity={0.8}
+              style={styles.newConvButton}
+              onPress={onNewConversation}
+              activeOpacity={0.85}
             >
-              <View style={styles.cardHeader}>
-                <Text style={styles.convCardTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Text style={styles.timeText}>{formatTime(item.updatedAt)}</Text>
+              <View style={styles.newConvGlow} />
+              <View style={styles.newConvEmojiContainer}>
+                <Text style={styles.newConvEmoji}>⚡</Text>
               </View>
-              <Text style={styles.lastMessageText} numberOfLines={2}>
-                {item.lastMessage || 'Nenhuma mensagem recente'}
-              </Text>
+              <View style={styles.newConvTextContainer}>
+                <Text style={styles.newConvTitle}>Nova Conversa</Text>
+                <Text style={styles.newConvSubtitle}>Inicia um novo ciclo de agente no teu workspace</Text>
+              </View>
+              <Text style={styles.newConvArrow}>›</Text>
             </TouchableOpacity>
-          )}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); fetchConversations(); }}
-              tintColor={Colors.primary}
-            />
-          }
-        />
-      )}
+
+            <Text style={styles.sectionTitle}>Histórico de Conversas</Text>
+          </>
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.centered}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+              <Text style={styles.loadingText}>A carregar conversas...</Text>
+            </View>
+          ) : (
+            <View style={styles.centered}>
+              <Text style={styles.emptyEmoji}>💬</Text>
+              <Text style={styles.emptyTitle}>Sem conversas ainda</Text>
+              <Text style={styles.emptyText}>
+                Começa uma nova conversa com o {agent.name} para interagir com o teu ambiente local.
+              </Text>
+            </View>
+          )
+        }
+        renderItem={({ item }) => (
+          <ConversationCard
+            conversation={item}
+            onSelect={onSelectConversation}
+            onTogglePin={handleTogglePin}
+            onDelete={handleDelete}
+            hasPendingApproval={pendingApprovals ? !!pendingApprovals[item.id] : false}
+          />
+        )}
+      />
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 12 : 56,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  backArrow: {
-    fontSize: 32,
-    color: Colors.primary,
-    lineHeight: 36,
-  },
-  agentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  agentEmoji: {
-    fontSize: 28,
-    marginRight: 10,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  newConvButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 16,
-    marginHorizontal: 20,
-    marginTop: 20,
-    padding: 16,
-  },
-  newConvEmoji: {
-    fontSize: 28,
-    marginRight: 14,
-  },
-  newConvTextContainer: {
-    flex: 1,
-  },
-  newConvTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  newConvSubtitle: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  newConvArrow: {
-    fontSize: 24,
-    color: Colors.primary,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    marginHorizontal: 20,
-    marginTop: 28,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  listContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 32,
-  },
-  convCard: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  convCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.text,
-    flex: 1,
-    marginRight: 10,
-  },
-  timeText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '500',
-  },
-  lastMessageText: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    lineHeight: 18,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-  },
-  loadingText: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    marginTop: 10,
-  },
-  emptyEmoji: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-});

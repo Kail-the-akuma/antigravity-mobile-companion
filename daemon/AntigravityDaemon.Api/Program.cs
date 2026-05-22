@@ -27,6 +27,10 @@ builder.Services.AddSignalR();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IWorkspaceService, WorkspaceService>();
 builder.Services.AddTransient<ILlmService, LlmService>();
+builder.Services.AddSingleton<IAgentCliBridge, AgentCliBridge>();
+builder.Services.AddScoped<ITranscriptSyncService, TranscriptSyncService>();
+builder.Services.AddHostedService<TranscriptWatcherService>();
+
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -71,6 +75,10 @@ using (var scope = app.Services.CreateScope())
         }
 
         bool remoteIdColumnExists = false;
+        bool isPinnedColumnExists = false;
+        bool isDeletedColumnExists = false;
+        bool pushTokenColumnExists = false;
+        bool conversationIdColumnExists = false;
         if (agentsTableExists)
         {
             using (var cmd = conn.CreateCommand())
@@ -78,9 +86,35 @@ using (var scope = app.Services.CreateScope())
                 cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Conversations') WHERE name='RemoteConversationId'";
                 remoteIdColumnExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
             }
+
+            if (remoteIdColumnExists)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Conversations') WHERE name='IsPinned'";
+                    isPinnedColumnExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+                }
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Conversations') WHERE name='IsDeleted'";
+                    isDeletedColumnExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+                }
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('TrustedDevices') WHERE name='PushToken'";
+                pushTokenColumnExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Approvals') WHERE name='ConversationId'";
+                conversationIdColumnExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+            }
         }
 
-        schemaUpToDate = agentsTableExists && remoteIdColumnExists;
+        schemaUpToDate = agentsTableExists && remoteIdColumnExists && isPinnedColumnExists && isDeletedColumnExists && pushTokenColumnExists && conversationIdColumnExists;
     }
     catch
     {

@@ -238,7 +238,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onUnpair }) =>
             value={prompt}
             onChangeText={setPrompt}
             multiline
-            maxHeight={100}
           />
           <TouchableOpacity
             style={[styles.sendButton, (!prompt.trim() || sendingPrompt) && styles.sendButtonDisabled]}
@@ -419,6 +418,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 15,
     marginRight: 12,
+    maxHeight: 100,
   },
   sendButton: {
     backgroundColor: Colors.primary,

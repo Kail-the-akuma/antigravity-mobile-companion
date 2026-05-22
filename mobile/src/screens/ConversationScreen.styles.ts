@@ -1,0 +1,227 @@
+import { StyleSheet, Platform } from 'react-native';
+import { Colors } from '../theme/colors';
+
+export const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: Colors.textMuted,
+    marginTop: 12,
+    fontSize: 14,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? 16 : 16,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  backArrow: {
+    fontSize: 32,
+    color: Colors.primary,
+    lineHeight: 36,
+  },
+  agentInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  agentEmoji: {
+    fontSize: 28,
+    marginRight: 10,
+  },
+  agentName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 5,
+  },
+  statusText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  messageList: {
+    paddingVertical: 16,
+    flexGrow: 1,
+  },
+  emptyChat: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    paddingTop: 80,
+  },
+  emptyChatEmoji: {
+    fontSize: 56,
+    marginBottom: 16,
+  },
+  emptyChatTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  emptyChatText: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  typingIndicator: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  typingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 16,
+    borderBottomLeftRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    alignSelf: 'flex-start',
+  },
+  typingText: {
+    color: Colors.textMuted,
+    fontSize: 13,
+    marginLeft: 8,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 16,
+    borderTopWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: Colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    color: Colors.text,
+    fontSize: 15,
+    marginRight: 10,
+    maxHeight: 120,
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    opacity: 0.4,
+  },
+  sendIcon: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  executionCard: {
+    backgroundColor: 'rgba(94, 92, 230, 0.08)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(94, 92, 230, 0.2)',
+    padding: 16,
+    marginHorizontal: 16,
+    marginVertical: 12,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+  },
+  executionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  executionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  executionPrompt: {
+    fontSize: 14,
+    color: Colors.text,
+    fontStyle: 'italic',
+    lineHeight: 20,
+    marginBottom: 6,
+  },
+  executionStatus: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  
+  // Plan Notification Banner sitting statically below the header
+  reviewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(94, 92, 230, 0.12)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(94, 92, 230, 0.25)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  reviewBannerEmoji: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  reviewBannerTextContainer: {
+    flex: 1,
+  },
+  reviewBannerText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  reviewBannerSubtext: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  reviewBannerArrow: {
+    color: Colors.primary,
+    fontSize: 22,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  
+});

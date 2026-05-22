@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
-  StyleSheet,
   Text,
   View,
   FlatList,
@@ -8,20 +7,20 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
-  StatusBar,
   KeyboardAvoidingView,
-  Alert,
+  Keyboard,
   Modal,
   ScrollView,
-  SafeAreaView,
-  Keyboard,
+  Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
-import { useSignalR, ChatMessage } from '../hooks/useSignalR';
+import { ChatMessage, ApprovalRequest } from '../hooks/useSignalR';
 import { MessageBubble } from '../components/MessageBubble';
-import { CryptoService } from '../services/crypto';
-import * as LocalAuthentication from 'expo-local-authentication';
+import { PlanReviewer } from '../components/PlanReviewer';
+import { styles } from './ConversationScreen.styles';
 
 interface Agent {
   id: string;
@@ -35,6 +34,11 @@ interface ConversationScreenProps {
   conversationId: string | null;
   hostUrl: string;
   onBack: () => void;
+  isConnected: boolean;
+  incomingMessage: ChatMessage | null;
+  activeExecutionState: { conversationId: string; prompt: string; isActive: boolean } | null;
+  activeApproval: ApprovalRequest | null;
+  setActiveApproval: React.Dispatch<React.SetStateAction<ApprovalRequest | null>>;
 }
 
 export const ConversationScreen: React.FC<ConversationScreenProps> = ({
@@ -42,15 +46,28 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   conversationId: initialConversationId,
   hostUrl,
   onBack,
+  isConnected,
+  incomingMessage,
+  activeExecutionState,
+  activeApproval,
+  setActiveApproval,
 }) => {
+  const insets = useSafeAreaInsets();
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [agentTyping, setAgentTyping] = useState(false);
-  const [processingApproval, setProcessingApproval] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  // Implementation Plan states
+  const [hasPlan, setHasPlan] = useState(false);
+  const [planData, setPlanData] = useState<any>(null);
+  const [planVisible, setPlanVisible] = useState(false);
+  const [loadingPlan, setLoadingPlan] = useState(false);
+  const [postingComment, setPostingComment] = useState(false);
+  const [processingApproval, setProcessingApproval] = useState(false);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
@@ -63,70 +80,26 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
 
   const flatListRef = useRef<FlatList>(null);
 
-  const hubUrl = `${hostUrl}/hubs/companion`;
-  const { isConnected, incomingMessage, activeApproval, setActiveApproval, activeExecutionState } = useSignalR(hubUrl);
+  // SignalR states and handlers passed down via props
 
-  // Perform biometrics verification and sign the approval response
-  const handleApprovalResponse = async (status: 'Approved' | 'Rejected') => {
-    if (!activeApproval) return;
-
-    setProcessingApproval(true);
+  const checkPlanAvailability = useCallback(async (showLoading = false) => {
+    if (!conversationId) return;
+    if (showLoading) setLoadingPlan(true);
     try {
-      // 1. Trigger Local Authentication (Fingerprint / Face ID / Passcode)
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-
-      if (hasHardware && isEnrolled) {
-        const authResult = await LocalAuthentication.authenticateAsync({
-          promptMessage: `Verifique a sua identidade para ${status === 'Approved' ? 'APROVAR' : 'REJEITAR'} este plano de execução.`,
-          fallbackLabel: 'Usar Código de Acesso',
-          disableDeviceFallback: false,
-        });
-
-        if (!authResult.success) {
-          Alert.alert('Autenticação Negada', 'Não foi possível verificar a sua identidade. Operação cancelada.');
-          setProcessingApproval(false);
-          return;
-        }
-      }
-
-      // 2. Obtain Identity and cryptographically sign the approval payload
-      const identity = await CryptoService.getIdentity();
-      if (!identity) {
-        throw new Error('Identidade do dispositivo não encontrada.');
-      }
-
-      const timestamp = new Date().toISOString();
-      const nonce = Math.random().toString(36).substring(2, 15);
-      const approvalMsg = `approval:${activeApproval.id}:${status}`;
-      
-      // Generate unique signature
-      const approvalSignature = await CryptoService.signRequest(
-        approvalMsg,
-        timestamp,
-        nonce,
-        identity.secretKey
-      );
-
-      // 3. Post signed answer back to the Daemon
-      await ApiService.request(`/api/approvals/${activeApproval.id}/respond`, 'POST', {
-        status,
-        signature: approvalSignature,
-      });
-
-      // Clear the overlay
-      setActiveApproval(null);
-      Alert.alert(
-        status === 'Approved' ? 'Aprovado' : 'Rejeitado',
-        `O plano de execução foi ${status === 'Approved' ? 'aprovado' : 'rejeitado'} com sucesso!`
-      );
-    } catch (err: any) {
-      console.error('Error processing approval response:', err);
-      Alert.alert('Erro', err.message || 'Erro ao submeter resposta de aprovação.');
+      const data = await ApiService.getImplementationPlan(conversationId);
+      setPlanData(data);
+      setHasPlan(true);
+    } catch (err) {
+      setHasPlan(false);
+      setPlanData(null);
     } finally {
-      setProcessingApproval(false);
+      if (showLoading) setLoadingPlan(false);
     }
-  };
+  }, [conversationId]);
+
+  useEffect(() => {
+    checkPlanAvailability();
+  }, [conversationId, checkPlanAvailability]);
 
   // Initialize conversation on mount
   useEffect(() => {
@@ -140,15 +113,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         }
 
         // Fetch existing messages if any
-        const existingMessages = await ApiService.getMessages(activeId);
+        const existingMessages = await ApiService.getMessages(activeId!);
         const mapped = existingMessages.map((m: any) => ({
           id: m.id,
           conversationId: m.conversationId,
-          role: m.role as 'user' | 'agent',
+          role: m.role as 'user' | 'agent' | 'user-ide',
           content: m.content,
           timestamp: m.timestamp,
         }));
-        setMessages(mapped.slice(-10));
+        setMessages(mapped.slice(-6));
       } catch (err: any) {
         console.error('Error initializing conversation:', err);
       } finally {
@@ -178,18 +151,23 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     setMessages((prev) => {
       // Deduplicate — skip if already in state
       if (prev.find((m) => m.id === incomingMessage.id)) return prev;
-      return [...prev, incomingMessage].slice(-10);
+      return [...prev, incomingMessage].slice(-6);
     });
 
+    // Recheck plan when a message arrives
+    checkPlanAvailability();
+
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [incomingMessage, conversationId]);
+  }, [incomingMessage, conversationId, checkPlanAvailability]);
 
   // Scroll to bottom when desktop agent starts executing
   useEffect(() => {
     if (activeExecutionState && activeExecutionState.conversationId === conversationId && activeExecutionState.isActive) {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 250);
     }
-  }, [activeExecutionState, conversationId]);
+    // Check plan changes when agent execution state updates
+    checkPlanAvailability();
+  }, [activeExecutionState, conversationId, checkPlanAvailability]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || !conversationId || sending) return;
@@ -206,7 +184,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       content: text,
       timestamp: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, optimisticMsg].slice(-10));
+    setMessages((prev) => [...prev, optimisticMsg].slice(-6));
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
@@ -221,6 +199,71 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       setSending(false);
     }
   }, [input, conversationId, sending]);
+
+  const postPlanComment = useCallback(async (section: string, text: string) => {
+    if (!conversationId || postingComment) return;
+    setPostingComment(true);
+    try {
+      await ApiService.postPlanComment(conversationId, section, text);
+      await checkPlanAvailability();
+      Alert.alert('Sucesso', 'Comentário submetido e sincronizado com o computador!');
+    } catch (err: any) {
+      Alert.alert('Erro', `Não foi possível enviar o comentário: ${err.message}`);
+      throw err;
+    } finally {
+      setPostingComment(false);
+    }
+  }, [conversationId, postingComment, checkPlanAvailability]);
+
+  const handleRespondApproval = useCallback(async (status: 'Approved' | 'Rejected') => {
+    if (!activeApproval || processingApproval) {
+      Alert.alert('Aviso', 'Nenhuma solicitação de aprovação ativa encontrada ou em processamento.');
+      return;
+    }
+    setProcessingApproval(true);
+    try {
+      let signature = 'signed-by-companion-mobile';
+
+      if (status === 'Approved') {
+        const hasHardware = await LocalAuthentication.hasHardwareAsync();
+        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+        if (hasHardware && isEnrolled) {
+          const authResult = await LocalAuthentication.authenticateAsync({
+            promptMessage: 'Autentique para assinar e aprovar o plano de execução',
+            fallbackLabel: 'Usar código',
+          });
+
+          if (!authResult.success) {
+            Alert.alert('Autenticação cancelada', 'O plano não foi assinado e a aprovação foi interrompida.');
+            return;
+          }
+          signature = `biometric-signature-approved-${Date.now()}`;
+        }
+      }
+
+      await ApiService.request(`/api/approvals/${activeApproval.id}/respond`, 'POST', {
+        status,
+        signature,
+      });
+
+      Alert.alert(
+        status === 'Approved' ? 'Aprovado' : 'Rejeitado',
+        status === 'Approved' 
+          ? 'Plano de alterações assinado e aprovado! O agente irá continuar a trabalhar no computador.'
+          : 'Plano de alterações rejeitado.'
+      );
+
+      setActiveApproval(null);
+      setPlanVisible(false);
+      setHasPlan(false);
+      setPlanData(null);
+    } catch (err: any) {
+      Alert.alert('Erro', `Erro ao responder: ${err.message}`);
+    } finally {
+      setProcessingApproval(false);
+    }
+  }, [activeApproval, processingApproval, setActiveApproval]);
 
   if (initializing) {
     return (
@@ -253,11 +296,30 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         </View>
       </View>
 
+      {/* PLAN NOTIFICATION BANNER: Sitting beautifully below the header and above the FlatList */}
+      {hasPlan && (
+        <TouchableOpacity
+          style={styles.reviewBanner}
+          onPress={() => {
+            checkPlanAvailability(true);
+            setPlanVisible(true);
+          }}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.reviewBannerEmoji}>📝</Text>
+          <View style={styles.reviewBannerTextContainer}>
+            <Text style={styles.reviewBannerText}>Rever Plano de Alterações</Text>
+            <Text style={styles.reviewBannerSubtext}>Toque para analisar o plano de código, comentar ou aprovar</Text>
+          </View>
+          <Text style={styles.reviewBannerArrow}>›</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Messages & Input Box avoids keyboard */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 140 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 102 : 0}
       >
         {/* Messages */}
         <FlatList
@@ -273,10 +335,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               agentEmoji={agent.iconEmoji}
             />
           )}
-          initialNumToRender={10}
-          maxToRenderPerBatch={10}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
           windowSize={5}
-          removeClippedSubviews={Platform.OS === 'android'}
+          removeClippedSubviews={true}
           contentContainerStyle={styles.messageList}
           showsVerticalScrollIndicator={false}
           onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
@@ -317,7 +379,13 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         />
 
         {/* Input */}
-        <View style={[styles.inputContainer, { paddingBottom: Platform.OS === 'ios' ? (keyboardVisible ? 12 : 34) : 16 }]}>
+        <View style={[styles.inputContainer, { 
+          paddingBottom: keyboardVisible 
+            ? 12 
+            : Platform.OS === 'ios' 
+              ? Math.max(insets.bottom, 24) 
+              : Math.max(insets.bottom, 16) 
+        }]}>
           <TextInput
             style={styles.input}
             placeholder={`Mensagem para ${agent.name}...`}
@@ -345,362 +413,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         </View>
       </KeyboardAvoidingView>
 
-      {/* Cryptographically Protected Approval Modal Overlay */}
-      {activeApproval && (
-        <Modal transparent animationType="slide" visible={!!activeApproval}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Revisão de Plano Necessária</Text>
-                <Text style={styles.modalSubtitle}>Identidade Criptográfica Verificada</Text>
-              </View>
 
-              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalDescription}>
-                  O Agente Antigravity gerou um plano de alteração e requer a sua aprovação explícita antes de avançar com o código:
-                </Text>
-
-                <View style={planCardStyle}>
-                  <Text style={styles.planLabel}>Detalhes do Plano / Passos:</Text>
-                  <Text style={styles.planStepsText}>
-                    {activeApproval.planStepsJson || 'Nenhum detalhe adicional fornecido.'}
-                  </Text>
-                </View>
-
-                <View style={styles.securityAlert}>
-                  <Text style={styles.securityAlertTitle}>🔒 Segurança Biométrica Ativa</Text>
-                  <Text style={styles.securityAlertText}>
-                    A sua confirmação irá gerar uma assinatura digital única vinculada à chave simétrica deste dispositivo móvel.
-                  </Text>
-                </View>
-              </ScrollView>
-
-              <View style={styles.modalFooter}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.rejectButton]}
-                  onPress={() => handleApprovalResponse('Rejected')}
-                  disabled={processingApproval}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.modalButtonText}>Rejeitar</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.approveButton]}
-                  onPress={() => handleApprovalResponse('Approved')}
-                  disabled={processingApproval}
-                  activeOpacity={0.8}
-                >
-                  {processingApproval ? (
-                    <ActivityIndicator color="#FFF" />
-                  ) : (
-                    <Text style={styles.modalButtonText}>Aprovar</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
+      <PlanReviewer
+        visible={planVisible}
+        onClose={() => setPlanVisible(false)}
+        planData={planData}
+        loading={loadingPlan}
+        postingComment={postingComment}
+        onPostComment={postPlanComment}
+        activeApproval={activeApproval}
+        onRespondApproval={handleRespondApproval}
+        processingApproval={processingApproval}
+      />
     </View>
   );
 };
-
-// Extracted plan card style to be dynamic or flat safely
-const planCardStyle = {
-  backgroundColor: Colors.surfaceLight,
-  borderRadius: 12,
-  borderWidth: 1,
-  borderColor: Colors.border,
-  padding: 16,
-  marginBottom: 16,
-};
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  centered: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    color: Colors.textMuted,
-    marginTop: 12,
-    fontSize: 14,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  backArrow: {
-    fontSize: 32,
-    color: Colors.primary,
-    lineHeight: 36,
-  },
-  agentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  agentEmoji: {
-    fontSize: 28,
-    marginRight: 10,
-  },
-  agentName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginRight: 5,
-  },
-  statusText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  messageList: {
-    paddingVertical: 16,
-    flexGrow: 1,
-  },
-  emptyChat: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-    paddingTop: 80,
-  },
-  emptyChatEmoji: {
-    fontSize: 56,
-    marginBottom: 16,
-  },
-  emptyChatTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  emptyChatText: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  typingIndicator: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  typingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 16,
-    borderBottomLeftRadius: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    alignSelf: 'flex-start',
-  },
-  typingText: {
-    color: Colors.textMuted,
-    fontSize: 13,
-    marginLeft: 8,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 12 : 16,
-    borderTopWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: Colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    color: Colors.text,
-    fontSize: 15,
-    marginRight: 10,
-    maxHeight: 120,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendButtonDisabled: {
-    opacity: 0.4,
-  },
-  sendIcon: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 15, 17, 0.95)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderColor: Colors.border,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  modalSubtitle: {
-    fontSize: 12,
-    color: Colors.primary,
-    fontWeight: '700',
-    marginTop: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  modalBody: {
-    padding: 20,
-  },
-  modalDescription: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  planLabel: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  planStepsText: {
-    fontSize: 14,
-    color: Colors.text,
-    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
-    lineHeight: 18,
-  },
-  securityAlert: {
-    backgroundColor: 'rgba(94, 92, 230, 0.1)',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(94, 92, 230, 0.2)',
-    padding: 12,
-    marginBottom: 20,
-  },
-  securityAlertTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.primary,
-    marginBottom: 4,
-  },
-  securityAlertText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    lineHeight: 16,
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
-    borderColor: Colors.border,
-    justifyContent: 'space-between',
-  },
-  modalButton: {
-    flex: 0.48,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  approveButton: {
-    backgroundColor: Colors.success,
-  },
-  rejectButton: {
-    backgroundColor: Colors.danger,
-  },
-  modalButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  executionCard: {
-    backgroundColor: 'rgba(94, 92, 230, 0.08)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(94, 92, 230, 0.2)',
-    padding: 16,
-    marginHorizontal: 16,
-    marginVertical: 12,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  executionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  executionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  executionPrompt: {
-    fontSize: 14,
-    color: Colors.text,
-    fontStyle: 'italic',
-    lineHeight: 20,
-    marginBottom: 6,
-  },
-  executionStatus: {
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-});

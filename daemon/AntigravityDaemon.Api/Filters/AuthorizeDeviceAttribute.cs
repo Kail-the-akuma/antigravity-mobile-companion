@@ -86,10 +86,20 @@ namespace AntigravityDaemon.Api.Filters
                 return;
             }
 
-            // 5. Build payload from ActionArguments (re-serialized with CamelCase to match the client)
-            //    Reading request.Body directly is unreliable after model binding has consumed it.
-            //    Instead, we serialize the bound object — the result is byte-for-byte identical to what
-            //    the client signed via JSON.stringify().
+            // 5. Read the raw request body safely by enabling buffering
+            request.EnableBuffering();
+            string rawBody = string.Empty;
+            if (request.ContentLength > 0)
+            {
+                request.Body.Position = 0;
+                using (var reader = new System.IO.StreamReader(request.Body, Encoding.UTF8, leaveOpen: true))
+                {
+                    rawBody = await reader.ReadToEndAsync();
+                }
+                request.Body.Position = 0; // Reset position for model binding/subsequent reads
+            }
+
+            // Also keep the serialized payload as a robust fallback
             string payload = string.Empty;
             foreach (var key in context.ActionArguments.Keys)
             {
@@ -105,7 +115,7 @@ namespace AntigravityDaemon.Api.Filters
                 }
             }
 
-            // 6. Verify signature: support both raw and unicode-decoded JSON payloads (due to different JS/C# escape behaviors)
+            // 6. Verify signature: support raw body, unicode-decoded and raw re-serialized payloads
             string decodedPayload = System.Text.RegularExpressions.Regex.Replace(
                 payload,
                 @"\\u([0-9a-fA-F]{4})",
@@ -115,18 +125,32 @@ namespace AntigravityDaemon.Api.Filters
             bool signaturesMatch = false;
             string localSignature = "";
 
-            // Try first with decodedPayload
-            string messageDecoded = $"{decodedPayload}|{timestamp}|{nonce}|{device.SecretKey}";
+            // Try first with raw request body (most reliable, matches client JSON.stringify byte-for-byte)
+            string messageRawBody = $"{rawBody}|{timestamp}|{nonce}|{device.SecretKey}";
             using (var sha256 = SHA256.Create())
             {
-                var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(messageDecoded));
+                var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(messageRawBody));
                 localSignature = BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
                 byte[] clientSigBytes = Encoding.UTF8.GetBytes(clientSignature.ToLowerInvariant());
                 byte[] localSigBytes = Encoding.UTF8.GetBytes(localSignature);
                 signaturesMatch = CryptographicOperations.FixedTimeEquals(clientSigBytes, localSigBytes);
             }
 
-            // If that fails, try with raw payload (fallback)
+            // Fallback 1: Try with decodedPayload
+            if (!signaturesMatch)
+            {
+                string messageDecoded = $"{decodedPayload}|{timestamp}|{nonce}|{device.SecretKey}";
+                using (var sha256 = SHA256.Create())
+                {
+                    var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(messageDecoded));
+                    localSignature = BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
+                    byte[] clientSigBytes = Encoding.UTF8.GetBytes(clientSignature.ToLowerInvariant());
+                    byte[] localSigBytes = Encoding.UTF8.GetBytes(localSignature);
+                    signaturesMatch = CryptographicOperations.FixedTimeEquals(clientSigBytes, localSigBytes);
+                }
+            }
+
+            // Fallback 2: Try with raw re-serialized payload
             if (!signaturesMatch)
             {
                 string messageRaw = $"{payload}|{timestamp}|{nonce}|{device.SecretKey}";

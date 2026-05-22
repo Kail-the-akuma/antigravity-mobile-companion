@@ -101,5 +101,28 @@ namespace AntigravityDaemon.Api.Controllers
                 deviceId = device.Id
             });
         }
+
+        public record RegisterPushTokenRequest(string DeviceId, string PushToken);
+
+        // Endpoint to register the push token for a paired device
+        [HttpPost("push-token")]
+        public async Task<IActionResult> RegisterPushToken([FromBody] RegisterPushTokenRequest request)
+        {
+            if (!Guid.TryParse(request.DeviceId, out var deviceIdGuid))
+            {
+                return BadRequest("invalid DeviceId format.");
+            }
+
+            var device = await _context.TrustedDevices.FindAsync(deviceIdGuid);
+            if (device == null)
+            {
+                return NotFound("Device not found.");
+            }
+
+            device.PushToken = request.PushToken;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Push token registered successfully." });
+        }
     }
 }

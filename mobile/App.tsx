@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
-  SafeAreaView,
   ActivityIndicator,
   Modal,
   Text,
@@ -12,15 +11,29 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from './src/theme/colors';
 import { PairingScreen } from './src/screens/PairingScreen';
 import { AgentListScreen } from './src/screens/AgentListScreen';
 import { ConversationListScreen } from './src/screens/ConversationListScreen';
 import { ConversationScreen } from './src/screens/ConversationScreen';
+import { DeletedConversationsScreen } from './src/screens/DeletedConversationsScreen';
 import { ApiService } from './src/services/api';
 import { CryptoService } from './src/services/crypto';
 import { useSignalR } from './src/hooks/useSignalR';
 import * as LocalAuthentication from 'expo-local-authentication';
+import * as Updates from 'expo-updates';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 interface Agent {
   id: string;
@@ -32,18 +45,150 @@ interface Agent {
   lastPing: string;
 }
 
-type Screen = 'loading' | 'pairing' | 'agents' | 'conversations' | 'conversation';
+type Screen = 'loading' | 'pairing' | 'agents' | 'conversations' | 'conversation' | 'deleted_conversations';
 
-export default function App() {
+function AppContent() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [hostUrl, setHostUrl] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [processingApproval, setProcessingApproval] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState<Record<string, any>>({});
 
   // Initialize global SignalR Hub connection if device is paired
   const hubUrl = hostUrl ? `${hostUrl}/hubs/companion` : null;
-  const { isConnected, activeApproval, setActiveApproval } = useSignalR(hubUrl);
+  const { 
+    isConnected, 
+    activeApproval, 
+    setActiveApproval,
+    incomingMessage,
+    activeExecutionState
+  } = useSignalR(hubUrl);
+
+  // EAS Over-The-Air Automatic Updates Hook
+  useEffect(() => {
+    async function checkAndApplyUpdates() {
+      if (__DEV__) {
+        console.log('Running in development mode. Skipping EAS OTA Updates check.');
+        return;
+      }
+      try {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          console.log('New EAS update available. Fetching update...');
+          await Updates.fetchUpdateAsync();
+          Alert.alert(
+            '⚡ Antigravity Atualizada',
+            'Uma nova versão do Companion foi descarregada com sucesso. Pretendes aplicar as alterações agora?',
+            [
+              {
+                text: 'Recarregar Agora',
+                onPress: async () => {
+                  await Updates.reloadAsync();
+                },
+              },
+            ],
+            { cancelable: false }
+          );
+        }
+      } catch (err) {
+        console.log('Error checking for EAS Updates:', err);
+      }
+    }
+
+    checkAndApplyUpdates();
+  }, []);
+
+  // Register push notifications
+  useEffect(() => {
+    async function registerForPushNotificationsAsync() {
+      try {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        
+        if (finalStatus !== 'granted') {
+          console.log('Notification permissions not granted.');
+          return;
+        }
+
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        const token = tokenData.data;
+        console.log('Expo Push Token retrieved:', token);
+
+        await ApiService.registerPushToken(token);
+        console.log('Push token successfully registered with daemon backend.');
+      } catch (err) {
+        console.warn('Failed to register for push notifications:', err);
+      }
+    }
+
+    if (hostUrl) {
+      registerForPushNotificationsAsync();
+    }
+  }, [hostUrl]);
+
+  // Handle push notification interactions and foreground routing logic
+  useEffect(() => {
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data as any;
+      if (data && data.conversationId) {
+        console.log('User tapped push notification, navigating to conversation:', data.conversationId);
+        setSelectedConversationId(data.conversationId as string);
+        setScreen('conversation');
+      }
+    });
+
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (response) {
+        const data = response.notification.request.content.data as any;
+        if (data && data.conversationId) {
+          console.log('App launched via push notification, navigating:', data.conversationId);
+          setSelectedConversationId(data.conversationId as string);
+          setScreen('conversation');
+        }
+      }
+    });
+
+    return () => {
+      responseSubscription.remove();
+    };
+  }, []);
+
+  // Contextual approval listener
+  useEffect(() => {
+    if (!activeApproval) return;
+
+    const approvalConvId = activeApproval.conversationId;
+    if (!approvalConvId) return;
+
+    if (screen === 'conversation' && selectedConversationId === approvalConvId) {
+      console.log('Foreground SignalR: matching screen, modal will show automatically.');
+    } else {
+      console.log('Foreground SignalR: different screen, scheduling local notification and marking list card.');
+      
+      Notifications.scheduleNotificationAsync({
+        content: {
+          title: '⚡ Antigravity - Ação Requerida',
+          body: 'O agente gerou um plano de alterações que necessita de revisão.',
+          data: {
+            conversationId: approvalConvId,
+            approvalId: activeApproval.id,
+          },
+        },
+        trigger: null,
+      });
+
+      setPendingApprovals(prev => ({
+        ...prev,
+        [approvalConvId]: activeApproval
+      }));
+    }
+  }, [activeApproval, screen, selectedConversationId]);
 
   const handleApprovalResponse = async (status: 'Approved' | 'Rejected') => {
     if (!activeApproval) return;
@@ -91,6 +236,15 @@ export default function App() {
         signature: approvalSignature,
       });
 
+      // Clear from pending approvals map
+      if (activeApproval.conversationId) {
+        setPendingApprovals(prev => {
+          const updated = { ...prev };
+          delete updated[activeApproval.conversationId!];
+          return updated;
+        });
+      }
+
       setActiveApproval(null);
       Alert.alert(
         status === 'Approved' ? 'Aprovado' : 'Rejeitado',
@@ -105,6 +259,14 @@ export default function App() {
   };
 
   useEffect(() => {
+    ApiService.setUnauthorizedCallback(() => {
+      Alert.alert(
+        'Sessão Expirada',
+        'O dispositivo foi desautorizado ou o servidor foi reiniciado. Por favor, emparelhe novamente.',
+        [{ text: 'OK', onPress: handleUnpair }]
+      );
+    });
+
     const checkPairingStatus = async () => {
       try {
         const url = await ApiService.getHostUrl();
@@ -146,7 +308,13 @@ export default function App() {
     setScreen('conversation');
   };
 
-  const handleUnpair = () => {
+  const handleUnpair = async () => {
+    try {
+      await ApiService.clearHostUrl();
+      await CryptoService.clearIdentity();
+    } catch (e) {
+      console.error('Error clearing pairing state:', e);
+    }
     setHostUrl(null);
     setSelectedAgent(null);
     setSelectedConversationId(null);
@@ -173,49 +341,60 @@ export default function App() {
   }
 
   return (
-    <>
-      <View style={styles.container}>
-        {screen !== 'pairing' && (
-          <SafeAreaView style={isConnected ? styles.safeConnected : styles.safeDisconnected}>
-            <View style={styles.statusIndicator}>
-              <View style={[styles.statusDot, isConnected ? styles.dotConnected : styles.dotDisconnected]} />
-              <Text style={styles.statusText}>
-                {isConnected ? 'Ligado ao Daemon' : 'A ligar ao Daemon...'}
-              </Text>
-            </View>
-          </SafeAreaView>
-        )}
+    <View style={styles.container}>
+      {screen !== 'pairing' && (
+        <SafeAreaView style={isConnected ? styles.safeConnected : styles.safeDisconnected}>
+          <View style={styles.statusIndicator}>
+            <View style={[styles.statusDot, isConnected ? styles.dotConnected : styles.dotDisconnected]} />
+            <Text style={styles.statusText}>
+              {isConnected ? 'Ligado ao Daemon' : 'A ligar ao Daemon...'}
+            </Text>
+          </View>
+        </SafeAreaView>
+      )}
 
-        {screen === 'pairing' && (
-          <PairingScreen onPairSuccess={handlePairSuccess} />
-        )}
-        {screen === 'agents' && hostUrl && (
-          <AgentListScreen
-            hostUrl={hostUrl}
-            onSelectAgent={handleSelectAgent}
-            onUnpair={handleUnpair}
-          />
-        )}
-        {screen === 'conversations' && selectedAgent && (
-          <ConversationListScreen
-            agent={selectedAgent}
-            onSelectConversation={handleSelectConversation}
-            onNewConversation={handleNewConversation}
-            onBack={handleBackToAgents}
-          />
-        )}
-        {screen === 'conversation' && hostUrl && selectedAgent && (
-          <ConversationScreen
-            agent={selectedAgent}
-            conversationId={selectedConversationId}
-            hostUrl={hostUrl}
-            onBack={handleBackToConversations}
-          />
-        )}
-      </View>
+      {screen === 'pairing' && (
+        <PairingScreen onPairSuccess={handlePairSuccess} />
+      )}
+      {screen === 'agents' && hostUrl && (
+        <AgentListScreen
+          hostUrl={hostUrl}
+          onSelectAgent={handleSelectAgent}
+          onUnpair={handleUnpair}
+        />
+      )}
+      {screen === 'conversations' && selectedAgent && (
+        <ConversationListScreen
+          agent={selectedAgent}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onBack={handleBackToAgents}
+          onOpenDeletedConversations={() => setScreen('deleted_conversations')}
+          pendingApprovals={pendingApprovals}
+        />
+      )}
+      {screen === 'deleted_conversations' && selectedAgent && (
+        <DeletedConversationsScreen
+          agent={selectedAgent}
+          onBack={() => setScreen('conversations')}
+        />
+      )}
+      {screen === 'conversation' && hostUrl && selectedAgent && (
+        <ConversationScreen
+          agent={selectedAgent}
+          conversationId={selectedConversationId}
+          hostUrl={hostUrl}
+          onBack={handleBackToConversations}
+          isConnected={isConnected}
+          incomingMessage={incomingMessage}
+          activeExecutionState={activeExecutionState}
+          activeApproval={activeApproval}
+          setActiveApproval={setActiveApproval}
+        />
+      )}
 
       {/* Cryptographically Protected Global Approval Modal Overlay */}
-      {activeApproval && (
+      {activeApproval && screen === 'conversation' && selectedConversationId === activeApproval.conversationId && (
         <Modal transparent animationType="slide" visible={!!activeApproval}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -271,9 +450,16 @@ export default function App() {
           </View>
         </Modal>
       )}
+    </View>
+  );
+}
 
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
       <StatusBar style="light" />
-    </>
+    </SafeAreaProvider>
   );
 }
 

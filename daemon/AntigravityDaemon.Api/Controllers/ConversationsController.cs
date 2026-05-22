@@ -8,10 +8,8 @@ using AntigravityDaemon.Api.Filters;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace AntigravityDaemon.Api.Controllers
@@ -23,19 +21,21 @@ namespace AntigravityDaemon.Api.Controllers
         private readonly DaemonDbContext _context;
         private readonly IHubContext<CompanionHub> _hubContext;
         private readonly IServiceScopeFactory _scopeFactory;
-        private readonly IWorkspaceService _workspaceService;
-        private static readonly System.Threading.SemaphoreSlim _syncSemaphore = new System.Threading.SemaphoreSlim(1, 1);
+        private readonly IAgentCliBridge _agentCliBridge;
+        private readonly ITranscriptSyncService _transcriptSyncService;
 
         public ConversationsController(
             DaemonDbContext context, 
             IHubContext<CompanionHub> hubContext, 
             IServiceScopeFactory scopeFactory,
-            IWorkspaceService workspaceService)
+            IAgentCliBridge agentCliBridge,
+            ITranscriptSyncService transcriptSyncService)
         {
             _context = context;
             _hubContext = hubContext;
             _scopeFactory = scopeFactory;
-            _workspaceService = workspaceService;
+            _agentCliBridge = agentCliBridge;
+            _transcriptSyncService = transcriptSyncService;
         }
 
         // GET: api/conversations — list all conversations (most recent first)
@@ -43,11 +43,13 @@ namespace AntigravityDaemon.Api.Controllers
         [AuthorizeDevice]
         public async Task<ActionResult<IEnumerable<object>>> GetConversations()
         {
-            await SyncLocalConversationsAsync();
+            await _transcriptSyncService.SyncLocalConversationsAsync();
 
             var conversations = await _context.Conversations
                 .Include(c => c.Agent)
-                .OrderByDescending(c => c.UpdatedAt)
+                .Where(c => !c.IsDeleted)
+                .OrderByDescending(c => c.IsPinned)
+                .ThenByDescending(c => c.UpdatedAt)
                 .Select(c => new
                 {
                     c.Id,
@@ -57,6 +59,7 @@ namespace AntigravityDaemon.Api.Controllers
                     AgentId = c.AgentId,
                     AgentName = c.Agent!.Name,
                     AgentEmoji = c.Agent!.IconEmoji,
+                    IsPinned = c.IsPinned,
                     LastMessage = c.Messages
                         .OrderByDescending(m => m.Timestamp)
                         .Select(m => m.Content)
@@ -112,7 +115,7 @@ namespace AntigravityDaemon.Api.Controllers
             var messages = await _context.ConversationMessages
                 .Where(m => m.ConversationId == id)
                 .OrderByDescending(m => m.Timestamp)
-                .Take(10)
+                .Take(6)
                 .ToListAsync();
 
             // Order chronologically for client-side display
@@ -152,16 +155,44 @@ namespace AntigravityDaemon.Api.Controllers
             var agentName = conversation.Agent?.Name ?? "Antigravity";
             var convId = id;
 
-            // Reflect the prompt on the computer terminal
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("\n==================================================");
-            Console.WriteLine($"[Companion] 📱 Mensagem enviada do telemóvel para {agentName}:");
-            Console.WriteLine($"👉 \"{request.Content}\"");
-            Console.WriteLine("==================================================\n");
+            // Reflect the prompt on the computer terminal inside a premium, highly visible ASCII card
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine("┌────────────────────────────────────────────────────────┐");
+            Console.WriteLine("│ 📱  ANTIGRAVITY MOBILE COMPANION — PROMPT TRANSMITTED  │");
+            Console.WriteLine("├────────────────────────────────────────────────────────┤");
             Console.ResetColor();
+            
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"  Agente: {agentName}");
+            Console.WriteLine($"  Conversa: {convId}");
+            Console.WriteLine($"  Data: {DateTime.Now:dd/MM/yyyy HH:mm:ss}");
+            Console.WriteLine("├────────────────────────────────────────────────────────┤");
+            
+            Console.ForegroundColor = ConsoleColor.White;
+            string promptText = request.Content;
+            if (promptText.Length > 52)
+            {
+                int index = 0;
+                while (index < promptText.Length)
+                {
+                    int chunk = Math.Min(52, promptText.Length - index);
+                    Console.WriteLine($"  > {promptText.Substring(index, chunk)}");
+                    index += chunk;
+                }
+            }
+            else
+            {
+                Console.WriteLine($"  > {promptText}");
+            }
+            
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine("└────────────────────────────────────────────────────────┘");
+            Console.ResetColor();
+            Console.WriteLine();
 
             // Write prompt to last_companion_prompt.md in the workspace
-            await WriteLastPromptToFileAsync(agentName, convId, request.Content);
+            await _transcriptSyncService.WriteLastPromptToFileAsync(agentName, convId, request.Content);
 
             _ = Task.Run(async () =>
             {
@@ -170,6 +201,8 @@ namespace AntigravityDaemon.Api.Controllers
                     using var scope = _scopeFactory.CreateScope();
                     var db = scope.ServiceProvider.GetRequiredService<DaemonDbContext>();
                     var hub = scope.ServiceProvider.GetRequiredService<IHubContext<CompanionHub>>();
+                    var cliBridge = scope.ServiceProvider.GetRequiredService<IAgentCliBridge>();
+                    var syncService = scope.ServiceProvider.GetRequiredService<ITranscriptSyncService>();
 
                     var conv = await db.Conversations.FindAsync(convId);
                     if (conv == null) return;
@@ -179,17 +212,17 @@ namespace AntigravityDaemon.Api.Controllers
 
                     if (isNew)
                     {
-                        remoteId = await RunAgentNewConversationAsync(request.Content);
+                        remoteId = await cliBridge.RunAgentNewConversationAsync(request.Content);
                         conv.RemoteConversationId = remoteId;
                         conv.UpdatedAt = DateTime.UtcNow;
                         await db.SaveChangesAsync();
                     }
                     else
                     {
-                        await RunAgentSendMessageAsync(remoteId!, request.Content);
+                        await cliBridge.RunAgentSendMessageAsync(remoteId!, request.Content);
                     }
 
-                    string agentReply = await PollAgentResponseAsync(remoteId!, request.Content);
+                    string agentReply = await syncService.PollAgentResponseAsync(remoteId!, request.Content);
 
                     // Log agent response to console
                     Console.ForegroundColor = ConsoleColor.Green;
@@ -199,29 +232,41 @@ namespace AntigravityDaemon.Api.Controllers
                     Console.WriteLine("==================================================\n");
                     Console.ResetColor();
 
-                    var sanitizedReply = SanitizeMessageContent(agentReply, "agent");
+                    var sanitizedReply = syncService.SanitizeMessageContent(agentReply, "agent");
 
-                    var agentMessage = new ConversationMessage
+                    bool alreadyExists = await db.ConversationMessages.AnyAsync(m =>
+                        m.ConversationId == convId &&
+                        m.Role == "agent" &&
+                        m.Content == sanitizedReply);
+
+                    if (!alreadyExists)
                     {
-                        ConversationId = convId,
-                        Role = "agent",
-                        Content = sanitizedReply,
-                        Timestamp = DateTime.UtcNow,
-                    };
+                        var agentMessage = new ConversationMessage
+                        {
+                            ConversationId = convId,
+                            Role = "agent",
+                            Content = sanitizedReply,
+                            Timestamp = DateTime.UtcNow,
+                        };
 
-                    db.ConversationMessages.Add(agentMessage);
-                    conv.UpdatedAt = DateTime.UtcNow;
-                    await db.SaveChangesAsync();
+                        db.ConversationMessages.Add(agentMessage);
+                        conv.UpdatedAt = DateTime.UtcNow;
+                        await db.SaveChangesAsync();
 
-                    // Broadcast via SignalR to update the mobile app
-                    await hub.Clients.All.SendAsync(
-                        "ReceiveMessage",
-                        convId.ToString(),
-                        agentMessage.Id.ToString(),
-                        "agent",
-                        agentMessage.Content,
-                        agentMessage.Timestamp.ToString("o")
-                    );
+                        // Broadcast via SignalR to update the mobile app
+                        await hub.Clients.All.SendAsync(
+                            "ReceiveMessage",
+                            convId.ToString(),
+                            agentMessage.Id.ToString(),
+                            "agent",
+                            agentMessage.Content,
+                            agentMessage.Timestamp.ToString("o")
+                        );
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[Companion] 🤖 Resposta duplicada evitada (já guardada pelo sincronizador de ficheiros).");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -272,7 +317,7 @@ namespace AntigravityDaemon.Api.Controllers
             }
 
             // Sync any existing messages from the desktop IDE transcript logs so the mobile app has full context
-            await SyncLocalConversationsAsync();
+            await _transcriptSyncService.SyncLocalConversationsAsync();
 
             // Re-fetch the conversation to get newly synced messages if any
             conversation = await _context.Conversations
@@ -280,7 +325,7 @@ namespace AntigravityDaemon.Api.Controllers
                 .FirstOrDefaultAsync(c => c.RemoteConversationId == remoteConversationId) ?? conversation;
 
             // Check if the exact message or a highly similar message from the agent already exists within the last 15 seconds to avoid duplicates
-            var sanitizedContent = SanitizeMessageContent(request.Content, "agent");
+            var sanitizedContent = _transcriptSyncService.SanitizeMessageContent(request.Content, "agent");
             var threshold = DateTime.UtcNow.AddSeconds(-15);
             bool isDuplicate = conversation.Messages.Any(m => 
                 m.Role == "agent" && 
@@ -329,771 +374,196 @@ namespace AntigravityDaemon.Api.Controllers
         [HttpPost("remote/agent-executing")]
         public async Task<IActionResult> UpdateAgentExecutingState([FromBody] AgentExecutingRequest request)
         {
+            _transcriptSyncService.SetAgentExecuting(request.ConversationId, request.IsActive);
+
             await _hubContext.Clients.All.SendAsync(
                 "ReceiveAgentExecutionState",
                 request.ConversationId.ToString(),
                 request.Prompt,
                 request.IsActive
             );
+
+            if (!request.IsActive)
+            {
+                // Force a final sync to pick up the completed agent response
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        // Brief delay to allow files to finish writing
+                        await Task.Delay(500);
+                        using var scope = _scopeFactory.CreateScope();
+                        var syncService = scope.ServiceProvider.GetRequiredService<ITranscriptSyncService>();
+                        await syncService.SyncLocalConversationsAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error running final sync: {ex}");
+                    }
+                });
+            }
+
             return Ok(new { message = "Execution state broadcasted successfully." });
         }
 
-        private static async Task<string> RunAgentCliAsync(string[] arguments)
+        // DELETE: api/conversations/{id} — soft delete a conversation
+        [HttpDelete("{id}")]
+        [AuthorizeDevice]
+        public async Task<IActionResult> DeleteConversation(Guid id)
         {
-            string lsAddress = await ResolveAntigravityLsAddressAsync();
-            string csrfToken = await ResolveAntigravityCsrfTokenAsync();
-            string? projectId = await ResolveAntigravityProjectIdAsync();
+            var conversation = await _context.Conversations.FindAsync(id);
+            if (conversation == null) return NotFound();
 
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = @"C:\Users\Hugo\AppData\Local\Programs\Antigravity\resources\bin\language_server.exe",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            conversation.IsDeleted = true;
+            conversation.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
 
-            startInfo.ArgumentList.Add("agentapi");
-            foreach (var arg in arguments)
-            {
-                startInfo.ArgumentList.Add(arg);
-            }
-            
-            // Clear and explicitly populate environment variables to isolate from parent IDE session
-            startInfo.EnvironmentVariables.Clear();
-            foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
-            {
-                string key = entry.Key?.ToString() ?? string.Empty;
-                string val = entry.Value?.ToString() ?? string.Empty;
+            // Broadcast via SignalR so UI can animate removal in real-time
+            await _hubContext.Clients.All.SendAsync("ConversationDeleted", id.ToString());
 
-                if (string.IsNullOrEmpty(key)) continue;
-
-                if (key.StartsWith("ANTIGRAVITY_", StringComparison.OrdinalIgnoreCase) ||
-                    key.StartsWith("AGY_", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Do NOT copy ANY Antigravity env vars here. We will set them explicitly below.
-                    continue;
-                }
-
-                startInfo.EnvironmentVariables[key] = val;
-            }
-
-            startInfo.EnvironmentVariables["ANTIGRAVITY_LS_ADDRESS"] = lsAddress;
-            startInfo.EnvironmentVariables["ANTIGRAVITY_CSRF_TOKEN"] = csrfToken;
-            
-            if (!string.IsNullOrEmpty(projectId))
-            {
-                startInfo.EnvironmentVariables["ANTIGRAVITY_PROJECT_ID"] = projectId;
-                
-                // Only propagate ANTIGRAVITY_SOURCE_METADATA if we actually have a project ID to avoid the gRPC missing project_id error!
-                string? sourceMetadata = Environment.GetEnvironmentVariable("ANTIGRAVITY_SOURCE_METADATA");
-                if (!string.IsNullOrEmpty(sourceMetadata))
-                {
-                    startInfo.EnvironmentVariables["ANTIGRAVITY_SOURCE_METADATA"] = sourceMetadata;
-                }
-            }
-
-            using var process = new Process { StartInfo = startInfo };
-            process.Start();
-
-            string output = await process.StandardOutput.ReadToEndAsync();
-            string error = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            if (process.ExitCode != 0)
-            {
-                throw new Exception($"language_server.exe agentapi failed with exit code {process.ExitCode}. Output: {output}. Error: {error}");
-            }
-
-            return output;
+            return Ok(new { message = "Conversa eliminada com sucesso." });
         }
 
-        private static async Task<string> ResolveAntigravityLsAddressAsync()
+        // GET: api/conversations/deleted — list all deleted conversations
+        [HttpGet("deleted")]
+        [AuthorizeDevice]
+        public async Task<ActionResult<IEnumerable<object>>> GetDeletedConversations()
         {
-            // 1. Check current process env
-            string? envAddress = Environment.GetEnvironmentVariable("ANTIGRAVITY_LS_ADDRESS");
-            if (!string.IsNullOrEmpty(envAddress))
-            {
-                return envAddress;
-            }
-
-            // 2. Check User environment variables
-            string? userAddress = Environment.GetEnvironmentVariable("ANTIGRAVITY_LS_ADDRESS", EnvironmentVariableTarget.User);
-            if (!string.IsNullOrEmpty(userAddress))
-            {
-                return userAddress;
-            }
-
-            // 3. Check Machine environment variables
-            string? machineAddress = Environment.GetEnvironmentVariable("ANTIGRAVITY_LS_ADDRESS", EnvironmentVariableTarget.Machine);
-            if (!string.IsNullOrEmpty(machineAddress))
-            {
-                return machineAddress;
-            }
-
-            // 4. Try parsing language_server.log
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string defaultLogPath = Path.Combine(appData, "Antigravity", "logs", "language_server.log");
-
-            // Secure best practice: check absolute candidate paths with read-only/share-read flags
-            var candidatePaths = new List<string>();
-            if (!string.IsNullOrEmpty(appData))
-            {
-                candidatePaths.Add(defaultLogPath);
-            }
-            candidatePaths.Add(@"C:\Users\Hugo\AppData\Roaming\Antigravity\logs\language_server.log");
-
-            foreach (var logPath in candidatePaths)
-            {
-                if (System.IO.File.Exists(logPath))
+            var conversations = await _context.Conversations
+                .Include(c => c.Agent)
+                .Where(c => c.IsDeleted)
+                .OrderByDescending(c => c.UpdatedAt)
+                .Select(c => new
                 {
-                    try
+                    c.Id,
+                    c.Title,
+                    c.CreatedAt,
+                    c.UpdatedAt,
+                    AgentId = c.AgentId,
+                    AgentName = c.Agent!.Name,
+                    AgentEmoji = c.Agent!.IconEmoji,
+                    IsPinned = c.IsPinned,
+                    LastMessage = c.Messages
+                        .OrderByDescending(m => m.Timestamp)
+                        .Select(m => m.Content)
+                        .FirstOrDefault() ?? "",
+                })
+                .ToListAsync();
+
+            return Ok(conversations);
+        }
+
+        // PUT: api/conversations/{id}/restore — restore a soft deleted conversation
+        [HttpPut("{id}/restore")]
+        [AuthorizeDevice]
+        public async Task<IActionResult> RestoreConversation(Guid id)
+        {
+            var conversation = await _context.Conversations.FindAsync(id);
+            if (conversation == null) return NotFound();
+
+            conversation.IsDeleted = false;
+            conversation.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            // Broadcast via SignalR so all connected devices can refresh instantly
+            await _hubContext.Clients.All.SendAsync("ConversationRestored", id.ToString());
+
+            return Ok(new { message = "Conversa restaurada com sucesso." });
+        }
+
+        // PUT: api/conversations/{id}/pin — toggle pin status bidirectionally
+        [HttpPut("{id}/pin")]
+        [AuthorizeDevice]
+        public async Task<IActionResult> TogglePinConversation(Guid id)
+        {
+            var conversation = await _context.Conversations.FindAsync(id);
+            if (conversation == null) return NotFound();
+
+            conversation.IsPinned = !conversation.IsPinned;
+            conversation.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            // Bidirectional file sync: write or delete .pinned marker in the brain directory
+            if (!string.IsNullOrEmpty(conversation.RemoteConversationId))
+            {
+                try
+                {
+                    string brainPath = @"C:\Users\Hugo\.gemini\antigravity\brain";
+                    string targetFolder = Path.Combine(brainPath, conversation.RemoteConversationId);
+                    if (Directory.Exists(targetFolder))
                     {
-                        using var fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                        using var reader = new StreamReader(fs);
-                        string? line;
-                        string? foundPort = null;
-                        while ((line = await reader.ReadLineAsync()) != null)
+                        string pinnedPath = Path.Combine(targetFolder, ".pinned");
+                        if (conversation.IsPinned)
                         {
-                            if (line.Contains("Language server listening on random port at") && line.Contains("for HTTP"))
+                            if (!System.IO.File.Exists(pinnedPath))
                             {
-                                int idxStart = line.IndexOf("port at ") + "port at ".Length;
-                                int idxEnd = line.IndexOf(" for HTTP");
-                                if (idxStart > 0 && idxEnd > idxStart)
-                                {
-                                    string portStr = line.Substring(idxStart, idxEnd - idxStart).Trim();
-                                    if (int.TryParse(portStr, out _))
-                                    {
-                                        foundPort = portStr;
-                                    }
-                                }
+                                await System.IO.File.WriteAllTextAsync(pinnedPath, "");
                             }
-                        }
-
-                        if (!string.IsNullOrEmpty(foundPort))
-                        {
-                            return $"localhost:{foundPort}";
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error reading language server log at {logPath}: {ex}");
-                    }
-                }
-            }
-
-            // 5. Secondary fallback: main.log (parse DevTools/dynamic URL)
-            string defaultMainLogPath = Path.Combine(appData, "Antigravity", "logs", "main.log");
-            var mainCandidatePaths = new List<string>();
-            if (!string.IsNullOrEmpty(appData))
-            {
-                mainCandidatePaths.Add(defaultMainLogPath);
-            }
-            mainCandidatePaths.Add(@"C:\Users\Hugo\AppData\Roaming\Antigravity\logs\main.log");
-
-            foreach (var mainLogPath in mainCandidatePaths)
-            {
-                if (System.IO.File.Exists(mainLogPath))
-                {
-                    try
-                    {
-                        using var fs = new FileStream(mainLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                        using var reader = new StreamReader(fs);
-                        string? line;
-                        string? foundPort = null;
-                        while ((line = await reader.ReadLineAsync()) != null)
-                        {
-                            if (line.Contains("Port changed! Reloading all windows with URL: https://127.0.0.1:"))
-                            {
-                                int idxStart = line.IndexOf("127.0.0.1:") + "127.0.0.1:".Length;
-                                int idxEnd = line.IndexOf("/", idxStart);
-                                if (idxStart > 0 && idxEnd > idxStart)
-                                {
-                                    string portStr = line.Substring(idxStart, idxEnd - idxStart).Trim();
-                                    if (int.TryParse(portStr, out int portVal))
-                                    {
-                                        foundPort = (portVal + 1).ToString();
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!string.IsNullOrEmpty(foundPort))
-                        {
-                            return $"localhost:{foundPort}";
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error reading main log at {mainLogPath}: {ex}");
-                    }
-                }
-            }
-
-            throw new Exception("ANTIGRAVITY_LS_ADDRESS is not set and could not be resolved from environment variables or active logs. Please make sure Antigravity IDE is running.");
-        }
-
-        private static async Task<string> ResolveAntigravityCsrfTokenAsync()
-        {
-            // 1. Check current process environment variable
-            string? envToken = Environment.GetEnvironmentVariable("ANTIGRAVITY_CSRF_TOKEN");
-            if (!string.IsNullOrEmpty(envToken))
-            {
-                return envToken;
-            }
-
-            // 2. Check User environment variables
-            string? userToken = Environment.GetEnvironmentVariable("ANTIGRAVITY_CSRF_TOKEN", EnvironmentVariableTarget.User);
-            if (!string.IsNullOrEmpty(userToken))
-            {
-                return userToken;
-            }
-
-            // 3. Check Machine environment variables
-            string? machineToken = Environment.GetEnvironmentVariable("ANTIGRAVITY_CSRF_TOKEN", EnvironmentVariableTarget.Machine);
-            if (!string.IsNullOrEmpty(machineToken))
-            {
-                return machineToken;
-            }
-
-            // 4. Try parsing main.log (parse spawned --csrf_token argument)
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string defaultMainLogPath = Path.Combine(appData, "Antigravity", "logs", "main.log");
-
-            var candidatePaths = new List<string>();
-            if (!string.IsNullOrEmpty(appData))
-            {
-                candidatePaths.Add(defaultMainLogPath);
-            }
-            candidatePaths.Add(@"C:\Users\Hugo\AppData\Roaming\Antigravity\logs\main.log");
-
-            foreach (var path in candidatePaths)
-            {
-                if (System.IO.File.Exists(path))
-                {
-                    try
-                    {
-                        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                        using var reader = new StreamReader(fs);
-                        string? line;
-                        string? foundToken = null;
-                        while ((line = await reader.ReadLineAsync()) != null)
-                        {
-                            if (line.Contains("--csrf_token"))
-                            {
-                                int idxStart = line.IndexOf("--csrf_token ") + "--csrf_token ".Length;
-                                if (idxStart > "--csrf_token ".Length)
-                                {
-                                    int idxEnd = line.IndexOf(" ", idxStart);
-                                    string tokenVal = idxEnd > idxStart 
-                                        ? line.Substring(idxStart, idxEnd - idxStart).Trim() 
-                                        : line.Substring(idxStart).Trim();
-                                    if (!string.IsNullOrEmpty(tokenVal))
-                                    {
-                                        foundToken = tokenVal;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!string.IsNullOrEmpty(foundToken))
-                        {
-                            return foundToken;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error reading main log at {path} for CSRF token: {ex}");
-                    }
-                }
-            }
-
-            throw new Exception("ANTIGRAVITY_CSRF_TOKEN is not set and could not be resolved from environment variables or active logs.");
-        }
-
-        private static Task<string?> ResolveAntigravityProjectIdAsync()
-        {
-            // 1. Process environment
-            string? envProjectId = Environment.GetEnvironmentVariable("ANTIGRAVITY_PROJECT_ID");
-            if (!string.IsNullOrEmpty(envProjectId))
-            {
-                return Task.FromResult<string?>(envProjectId);
-            }
-
-            // 2. User environment
-            string? userProjectId = Environment.GetEnvironmentVariable("ANTIGRAVITY_PROJECT_ID", EnvironmentVariableTarget.User);
-            if (!string.IsNullOrEmpty(userProjectId))
-            {
-                return Task.FromResult<string?>(userProjectId);
-            }
-
-            // 3. Machine environment
-            string? machineProjectId = Environment.GetEnvironmentVariable("ANTIGRAVITY_PROJECT_ID", EnvironmentVariableTarget.Machine);
-            if (!string.IsNullOrEmpty(machineProjectId))
-            {
-                return Task.FromResult<string?>(machineProjectId);
-            }
-
-            return Task.FromResult<string?>(null);
-        }
-
-        private static async Task<string> RunAgentNewConversationAsync(string prompt)
-        {
-            string output = await RunAgentCliAsync(new[] { "new-conversation", prompt });
-
-            using var doc = JsonDocument.Parse(output);
-            var root = doc.RootElement;
-            if (root.TryGetProperty("response", out var response) &&
-                response.TryGetProperty("newConversation", out var newConv) &&
-                newConv.TryGetProperty("conversationId", out var idProp))
-            {
-                return idProp.GetString()!;
-            }
-
-            throw new Exception($"Could not extract conversationId from output: {output}");
-        }
-
-        private static async Task RunAgentSendMessageAsync(string remoteId, string content)
-        {
-            await RunAgentCliAsync(new[] { "send-message", remoteId, content });
-        }
-
-        public class TranscriptLine
-        {
-            public int step_index { get; set; }
-            public string? source { get; set; }
-            public string? type { get; set; }
-            public string? status { get; set; }
-            public string? content { get; set; }
-            public string? created_at { get; set; }
-            public object? tool_calls { get; set; }
-        }
-
-        private static async Task<string> PollAgentResponseAsync(string remoteId, string expectedContent)
-        {
-            string logPath = $@"C:\Users\Hugo\.gemini\antigravity\brain\{remoteId}\.system_generated\logs\transcript.jsonl";
-
-            int existCheck = 0;
-            while (!System.IO.File.Exists(logPath) && existCheck < 20)
-            {
-                await Task.Delay(500);
-                existCheck++;
-            }
-
-            if (!System.IO.File.Exists(logPath))
-            {
-                throw new FileNotFoundException($"Transcript log file not found at {logPath}");
-            }
-
-            // Capture the last step index in the transcript log before polling starts
-            int lastStepIndex = -1;
-            try
-            {
-                var initialLines = await System.IO.File.ReadAllLinesAsync(logPath);
-                for (int i = initialLines.Length - 1; i >= 0; i--)
-                {
-                    var line = initialLines[i];
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-                    var parsed = JsonSerializer.Deserialize<TranscriptLine>(line);
-                    if (parsed != null)
-                    {
-                        lastStepIndex = parsed.step_index;
-                        break;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Companion] Warning reading initial transcript lines: {ex.Message}");
-            }
-
-            int timeoutSeconds = 120;
-            var startTime = DateTime.UtcNow;
-
-            while ((DateTime.UtcNow - startTime).TotalSeconds < timeoutSeconds)
-            {
-                List<string> lines = new List<string>();
-                using (var fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                using (var reader = new StreamReader(fs))
-                {
-                    string? line;
-                    while ((line = await reader.ReadLineAsync()) != null)
-                    {
-                        if (!string.IsNullOrWhiteSpace(line))
-                        {
-                            lines.Add(line);
-                        }
-                    }
-                }
-
-                int sentMessageIndex = -1;
-                List<TranscriptLine> parsedLines = new List<TranscriptLine>();
-
-                for (int i = 0; i < lines.Count; i++)
-                {
-                    try
-                     {
-                        var parsed = JsonSerializer.Deserialize<TranscriptLine>(lines[i]);
-                        if (parsed != null)
-                        {
-                            parsedLines.Add(parsed);
-
-                            // Match the newly appended message (step_index must be strictly greater than lastStepIndex)
-                            if (parsed.step_index > lastStepIndex && 
-                                sentMessageIndex == -1 && 
-                                parsed.content != null && 
-                                parsed.content.Contains(expectedContent))
-                            {
-                                sentMessageIndex = parsedLines.Count - 1;
-                            }
-                        }
-                    }
-                    catch
-                    {
-                    }
-                }
-
-                // If not matched by content, fallback ONLY within the newly appended steps to avoid matching historical logs
-                if (sentMessageIndex == -1)
-                {
-                    for (int i = 0; i < parsedLines.Count; i++)
-                    {
-                        var pl = parsedLines[i];
-                        if (pl.step_index > lastStepIndex && (pl.source == "USER_EXPLICIT" || pl.source == "SYSTEM"))
-                        {
-                            sentMessageIndex = i;
-                            break;
-                        }
-                    }
-                }
-
-                if (sentMessageIndex != -1)
-                {
-                    var linesAfter = parsedLines.Skip(sentMessageIndex + 1).ToList();
-                    if (linesAfter.Any())
-                    {
-                        var lastLine = linesAfter.Last();
-
-                        bool lastIsModelReply = lastLine.source == "MODEL" &&
-                                                lastLine.status == "DONE" &&
-                                                !string.IsNullOrEmpty(lastLine.content) &&
-                                                (lastLine.type == "PLANNER_RESPONSE" || lastLine.type == null);
-
-                        if (lastIsModelReply)
-                        {
-                            bool hasToolCalls = false;
-                            if (lastLine.tool_calls != null)
-                            {
-                                using var doc = JsonDocument.Parse(JsonSerializer.Serialize(lastLine.tool_calls));
-                                if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
-                                {
-                                    hasToolCalls = true;
-                                }
-                            }
-
-                            if (!hasToolCalls)
-                            {
-                                return lastLine.content!;
-                            }
-                        }
-                    }
-                }
-
-                await Task.Delay(1000);
-            }
-
-            throw new TimeoutException("Timed out waiting for Antigravity agent response.");
-        }
-
-        private async Task SyncLocalConversationsAsync()
-        {
-            await _syncSemaphore.WaitAsync();
-            try
-            {
-                string brainPath = @"C:\Users\Hugo\.gemini\antigravity\brain";
-                if (!Directory.Exists(brainPath)) return;
-
-                var directories = Directory.GetDirectories(brainPath);
-                var antigravityId = new Guid("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
-
-                foreach (var dir in directories)
-                {
-                    var dirName = Path.GetFileName(dir);
-                    if (!Guid.TryParse(dirName, out Guid remoteGuid)) continue;
-
-                    // Check if we already have this remote conversation in DB
-                    var existingConv = await _context.Conversations
-                        .Include(c => c.Messages)
-                        .FirstOrDefaultAsync(c => c.RemoteConversationId == dirName);
-
-                    string transcriptPath = Path.Combine(dir, ".system_generated", "logs", "transcript.jsonl");
-                    if (!System.IO.File.Exists(transcriptPath)) continue;
-
-                    // Parse transcript messages
-                    var messages = new List<ConversationMessage>();
-                    try
-                    {
-                        using var fs = new FileStream(transcriptPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                        using var reader = new StreamReader(fs);
-                        string? line;
-                        while ((line = await reader.ReadLineAsync()) != null)
-                        {
-                            if (string.IsNullOrWhiteSpace(line)) continue;
-                            try
-                            {
-                                var parsed = JsonSerializer.Deserialize<TranscriptLine>(line);
-                                if (parsed == null) continue;
-
-                                // 1. User input message
-                                if (parsed.source == "USER_EXPLICIT" && parsed.type == "USER_INPUT" && parsed.status == "DONE")
-                                {
-                                    string content = parsed.content ?? string.Empty;
-                                    // Strip <USER_REQUEST>...</USER_REQUEST> tags if present
-                                    int startTag = content.IndexOf("<USER_REQUEST>");
-                                    int endTag = content.IndexOf("</USER_REQUEST>");
-                                    if (startTag >= 0 && endTag > startTag)
-                                    {
-                                        content = content.Substring(startTag + "<USER_REQUEST>".Length, endTag - (startTag + "<USER_REQUEST>".Length)).Trim();
-                                    }
-
-                                    DateTime timestamp = DateTime.UtcNow;
-                                    if (!string.IsNullOrEmpty(parsed.created_at) && DateTime.TryParse(parsed.created_at, out var parsedTime))
-                                    {
-                                        timestamp = parsedTime.ToUniversalTime();
-                                    }
-
-                                    messages.Add(new ConversationMessage
-                                    {
-                                        Role = "user",
-                                        Content = content,
-                                        Timestamp = timestamp
-                                    });
-                                }
-                                // 2. Model response
-                                else if (parsed.source == "MODEL" && parsed.status == "DONE" && !string.IsNullOrEmpty(parsed.content))
-                                {
-                                    bool hasToolCalls = false;
-                                    if (parsed.tool_calls != null)
-                                    {
-                                        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(parsed.tool_calls));
-                                        if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
-                                        {
-                                            hasToolCalls = true;
-                                        }
-                                    }
-
-                                    if (!hasToolCalls && (parsed.type == "PLANNER_RESPONSE" || parsed.type == null))
-                                    {
-                                        DateTime timestamp = DateTime.UtcNow;
-                                        if (!string.IsNullOrEmpty(parsed.created_at) && DateTime.TryParse(parsed.created_at, out var parsedTime))
-                                        {
-                                            timestamp = parsedTime.ToUniversalTime();
-                                        }
-
-                                        messages.Add(new ConversationMessage
-                                        {
-                                            Role = "agent",
-                                            Content = SanitizeMessageContent(parsed.content, "agent"),
-                                            Timestamp = timestamp
-                                        });
-                                    }
-                                }
-                            }
-                            catch
-                            {
-                                // Ignore single line deserialization errors
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error reading transcript log for {dirName}: {ex}");
-                        continue;
-                    }
-
-                    if (messages.Count == 0) continue;
-
-                    // Derive the title from the first user request, truncated to 40 characters
-                    string firstUserMsg = messages.FirstOrDefault(m => m.Role == "user")?.Content ?? "Nova Conversa";
-                    string derivedTitle = firstUserMsg.Length > 40 ? firstUserMsg.Substring(0, 37) + "..." : firstUserMsg;
-
-                    // Determine the earliest and latest timestamps
-                    DateTime createdAt = messages.Min(m => m.Timestamp);
-                    DateTime updatedAt = messages.Max(m => m.Timestamp);
-
-                    if (existingConv == null)
-                    {
-                        // Create new conversation
-                        var newConv = new Conversation
-                        {
-                            Id = remoteGuid, // Maintain identity
-                            AgentId = antigravityId,
-                            Title = derivedTitle,
-                            CreatedAt = createdAt,
-                            UpdatedAt = updatedAt,
-                            RemoteConversationId = dirName
-                        };
-
-                        foreach (var msg in messages)
-                        {
-                            msg.ConversationId = newConv.Id;
-                            newConv.Messages.Add(msg);
-                        }
-
-                        _context.Conversations.Add(newConv);
-                    }
-                    else
-                    {
-                        // Sync messages for existing conversation to make sure any new messages are added
-                        foreach (var msg in messages)
-                        {
-                            bool exists = existingConv.Messages.Any(em => 
-                                em.Role == msg.Role && 
-                                Math.Abs((em.Timestamp.ToUniversalTime() - msg.Timestamp.ToUniversalTime()).TotalSeconds) < 15);
-
-                            if (!exists)
-                            {
-                                msg.ConversationId = existingConv.Id;
-                                _context.ConversationMessages.Add(msg);
-                            }
-                        }
-                        existingConv.UpdatedAt = updatedAt;
-                        existingConv.Title = derivedTitle;
-                    }
-                }
-
-                await _context.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error in SyncLocalConversationsAsync: {ex}");
-            }
-            finally
-            {
-                _syncSemaphore.Release();
-            }
-        }
-
-        private async Task WriteLastPromptToFileAsync(string agentName, Guid convId, string prompt)
-        {
-            try
-            {
-                string workspacePath = _workspaceService.GetWorkspacePath();
-                if (Directory.Exists(workspacePath))
-                {
-                    string filePath = Path.Combine(workspacePath, "last_companion_prompt.md");
-                    string fileContent = $@"# Último Prompt do Telemóvel
-
-**Agente:** {agentName}
-**Data:** {DateTime.Now:dd/MM/yyyy HH:mm:ss}
-**Conversa ID:** {convId}
-
-## Prompt Enviado:
-> {prompt}
-
----
-*Ficheiro gerado automaticamente pelo Antigravity Mobile Companion Daemon.*
-";
-                    await System.IO.File.WriteAllTextAsync(filePath, fileContent, System.Text.Encoding.UTF8);
-                    
-                    Console.ForegroundColor = ConsoleColor.Magenta;
-                    Console.WriteLine($"[Companion] 📂 Ficheiro de prompt atualizado no workspace: {filePath}");
-                    Console.ResetColor();
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Erro ao escrever prompt para o workspace: {ex.Message}");
-            }
-        }
-
-        private static string SanitizeMessageContent(string content, string role)
-        {
-            if (role != "agent" || string.IsNullOrEmpty(content))
-            {
-                return content;
-            }
-
-            try
-            {
-                // 1. Strip massive code blocks or replace them
-                var lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-                var sanitizedLines = new List<string>();
-                
-                bool inCodeBlock = false;
-                var currentBlockLines = new List<string>();
-                string codeBlockHeader = "";
-
-                foreach (var line in lines)
-                {
-                    if (line.TrimStart().StartsWith("```"))
-                    {
-                        if (!inCodeBlock)
-                        {
-                            inCodeBlock = true;
-                            codeBlockHeader = line;
-                            currentBlockLines.Clear();
                         }
                         else
                         {
-                            inCodeBlock = false;
-                            if (currentBlockLines.Count > 15)
+                            if (System.IO.File.Exists(pinnedPath))
                             {
-                                sanitizedLines.Add(codeBlockHeader);
-                                sanitizedLines.Add("... [Código/Diff de grande dimensão omitido para melhor performance no telemóvel] ...");
-                                sanitizedLines.Add("```");
-                            }
-                            else
-                            {
-                                sanitizedLines.Add(codeBlockHeader);
-                                sanitizedLines.AddRange(currentBlockLines);
-                                sanitizedLines.Add("```");
+                                System.IO.File.Delete(pinnedPath);
                             }
                         }
                     }
-                    else
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error writing/deleting local .pinned file for {conversation.RemoteConversationId}: {ex.Message}");
+                }
+
+                // Update .pbtxt annotation file for bidirectional sync with the IDE
+                string annotationPath = Path.Combine(@"C:\Users\Hugo\.gemini\antigravity\annotations", $"{conversation.RemoteConversationId}.pbtxt");
+                try
+                {
+                    if (conversation.IsPinned)
                     {
-                        if (inCodeBlock)
+                        if (System.IO.File.Exists(annotationPath))
                         {
-                            currentBlockLines.Add(line);
+                            string content = await System.IO.File.ReadAllTextAsync(annotationPath);
+                            if (!content.Contains("pinned:true"))
+                            {
+                                if (content.Contains("pinned:false"))
+                                {
+                                    content = content.Replace("pinned:false", "pinned:true");
+                                }
+                                else
+                                {
+                                    content = content.TrimEnd() + " pinned:true";
+                                }
+                                await System.IO.File.WriteAllTextAsync(annotationPath, content);
+                            }
                         }
                         else
                         {
-                            sanitizedLines.Add(line);
+                            await System.IO.File.WriteAllTextAsync(annotationPath, "pinned:true");
                         }
-                    }
-                }
-
-                if (inCodeBlock)
-                {
-                    if (currentBlockLines.Count > 15)
-                    {
-                        sanitizedLines.Add(codeBlockHeader);
-                        sanitizedLines.Add("... [Código/Diff de grande dimensão omitido para melhor performance no telemóvel] ...");
-                        sanitizedLines.Add("```");
                     }
                     else
                     {
-                        sanitizedLines.Add(codeBlockHeader);
-                        sanitizedLines.AddRange(currentBlockLines);
+                        if (System.IO.File.Exists(annotationPath))
+                        {
+                            string content = await System.IO.File.ReadAllTextAsync(annotationPath);
+                            if (content.Contains("pinned:true"))
+                            {
+                                content = content.Replace("pinned:true", "pinned:false");
+                                await System.IO.File.WriteAllTextAsync(annotationPath, content);
+                            }
+                        }
                     }
                 }
-
-                string result = string.Join("\n", sanitizedLines);
-
-                // 2. Truncate elegantly if it is still too large
-                if (result.Length > 2500)
+                catch (Exception ex)
                 {
-                    result = result.Substring(0, 2400) + "\n\n... *(O resto desta resposta longa foi omitido no telemóvel para otimizar a performance)*";
+                    Console.WriteLine($"Error updating .pbtxt annotation file for {conversation.RemoteConversationId}: {ex.Message}");
                 }
+            }
 
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error sanitizing agent message content: {ex.Message}");
-                return content.Length > 2000 ? content.Substring(0, 1900) + "\n\n... (Mensagem truncada por limite de tamanho)" : content;
-            }
+            // Broadcast via SignalR so all connected apps know instantly
+            await _hubContext.Clients.All.SendAsync("ConversationPinned", id.ToString(), conversation.IsPinned);
+
+            return Ok(new { message = conversation.IsPinned ? "Conversa fixada." : "Conversa desafixada.", isPinned = conversation.IsPinned });
         }
     }
 }

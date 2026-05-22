@@ -3,7 +3,13 @@ import * as SecureStore from 'expo-secure-store';
 
 const HOST_STORAGE_KEY = 'antigravity_companion_host_url';
 
+let onUnauthorizedCallback: (() => void) | null = null;
+
 export const ApiService = {
+  setUnauthorizedCallback: (callback: () => void) => {
+    onUnauthorizedCallback = callback;
+  },
+
   setHostUrl: async (url: string): Promise<void> => {
     await SecureStore.setItemAsync(HOST_STORAGE_KEY, url);
   },
@@ -19,7 +25,7 @@ export const ApiService = {
   // Helper to make signed requests to the protected daemon API
   request: async (
     endpoint: string,
-    method: 'GET' | 'POST' = 'GET',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     bodyData?: any
   ): Promise<any> => {
     const hostUrl = await ApiService.getHostUrl();
@@ -57,6 +63,11 @@ export const ApiService = {
 
     if (!response.ok) {
       const errorText = await response.text();
+      if (response.status === 401 || errorText.includes('Device is not paired') || errorText.includes('authorized')) {
+        if (onUnauthorizedCallback) {
+          onUnauthorizedCallback();
+        }
+      }
       throw new Error(errorText || `Request failed with status ${response.status}`);
     }
 
@@ -87,5 +98,41 @@ export const ApiService = {
 
   sendMessage: async (conversationId: string, content: string): Promise<any> => {
     return ApiService.request(`/api/conversations/${conversationId}/messages`, 'POST', { content });
+  },
+
+  deleteConversation: async (conversationId: string): Promise<any> => {
+    return ApiService.request(`/api/conversations/${conversationId}`, 'DELETE');
+  },
+
+  togglePinConversation: async (conversationId: string): Promise<any> => {
+    return ApiService.request(`/api/conversations/${conversationId}/pin`, 'PUT');
+  },
+
+  getDeletedConversations: async (): Promise<any[]> => {
+    return ApiService.request('/api/conversations/deleted');
+  },
+
+  restoreConversation: async (conversationId: string): Promise<any> => {
+    return ApiService.request(`/api/conversations/${conversationId}/restore`, 'PUT');
+  },
+
+  // ── Implementation Plan Reviewer ──────────────────────────────────────
+  getImplementationPlan: async (conversationId: string): Promise<any> => {
+    return ApiService.request(`/api/conversations/${conversationId}/implementation-plan`);
+  },
+
+  postPlanComment: async (conversationId: string, section: string, commentText: string): Promise<any> => {
+    return ApiService.request(`/api/conversations/${conversationId}/implementation-plan/comments`, 'POST', { section, commentText });
+  },
+
+  registerPushToken: async (pushToken: string): Promise<any> => {
+    const identity = await CryptoService.getIdentity();
+    if (!identity) {
+      throw new Error('Device identity is missing.');
+    }
+    return ApiService.request('/api/pairing/push-token', 'POST', {
+      deviceId: identity.deviceId,
+      pushToken,
+    });
   },
 };

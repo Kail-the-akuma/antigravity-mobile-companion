@@ -12,6 +12,8 @@ namespace AntigravityDaemon.Core.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
         public string? RemoteConversationId { get; set; }
+        public bool IsPinned { get; set; } = false;
+        public bool IsDeleted { get; set; } = false;
         public ICollection<ConversationMessage> Messages { get; set; } = new List<ConversationMessage>();
     }
 }

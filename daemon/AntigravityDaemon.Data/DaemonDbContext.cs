@@ -28,6 +28,13 @@ namespace AntigravityDaemon.Data
                 .HasForeignKey(a => a.TaskId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Configure relation: Approval has one Conversation
+            modelBuilder.Entity<ApprovalRequest>()
+                .HasOne(a => a.Conversation)
+                .WithMany()
+                .HasForeignKey(a => a.ConversationId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             // Task entity constraints
             modelBuilder.Entity<TaskItem>()
                 .HasKey(t => t.Id);
