@@ -14,6 +14,7 @@ import {
   Modal,
   ScrollView,
   SafeAreaView,
+  Keyboard,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
@@ -49,6 +50,16 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [initializing, setInitializing] = useState(true);
   const [agentTyping, setAgentTyping] = useState(false);
   const [processingApproval, setProcessingApproval] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -221,32 +232,33 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={0}
-    >
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
-            <Text style={styles.backArrow}>‹</Text>
-          </TouchableOpacity>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+          <Text style={styles.backArrow}>‹</Text>
+        </TouchableOpacity>
 
-          <View style={styles.agentInfo}>
-            <Text style={styles.agentEmoji}>{agent.iconEmoji}</Text>
-            <View>
-              <Text style={styles.agentName}>{agent.name}</Text>
-              <View style={styles.statusRow}>
-                <View style={[styles.statusDot, { backgroundColor: isConnected ? Colors.success : Colors.danger }]} />
-                <Text style={styles.statusText}>
-                  {isConnected ? (agent.isOnline ? 'Online' : 'Hub ligado') : 'Desconectado'}
-                </Text>
-              </View>
+        <View style={styles.agentInfo}>
+          <Text style={styles.agentEmoji}>{agent.iconEmoji}</Text>
+          <View>
+            <Text style={styles.agentName}>{agent.name}</Text>
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: isConnected ? Colors.success : Colors.danger }]} />
+              <Text style={styles.statusText}>
+                {isConnected ? (agent.isOnline ? 'Online' : 'Hub ligado') : 'Desconectado'}
+              </Text>
             </View>
           </View>
         </View>
+      </View>
 
+      {/* Messages & Input Box avoids keyboard */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 140 : 0}
+      >
         {/* Messages */}
         <FlatList
           ref={flatListRef}
@@ -305,7 +317,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         />
 
         {/* Input */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { paddingBottom: Platform.OS === 'ios' ? (keyboardVisible ? 12 : 34) : 16 }]}>
           <TextInput
             style={styles.input}
             placeholder={`Mensagem para ${agent.name}...`}
@@ -331,7 +343,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
             )}
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </KeyboardAvoidingView>
 
       {/* Cryptographically Protected Approval Modal Overlay */}
       {activeApproval && (
@@ -390,7 +402,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           </View>
         </Modal>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
@@ -422,7 +434,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 12 : 12,
+    paddingTop: 12,
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderColor: Colors.border,
