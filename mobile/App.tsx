@@ -268,19 +268,38 @@ function AppContent() {
     });
 
     const checkPairingStatus = async () => {
+      let resolved = false;
+
+      // Safety timeout: if SecureStore takes longer than 1500ms, fallback to pairing screen
+      const timeoutId = setTimeout(() => {
+        if (!resolved) {
+          console.warn('Pairing status check timed out after 1500ms. Defaulting to pairing screen.');
+          resolved = true;
+          setScreen('pairing');
+        }
+      }, 1500);
+
       try {
         const url = await ApiService.getHostUrl();
         const identity = await CryptoService.getIdentity();
 
-        if (url && identity) {
-          setHostUrl(url);
-          setScreen('agents');
-        } else {
-          setScreen('pairing');
+        if (!resolved) {
+          clearTimeout(timeoutId);
+          resolved = true;
+          if (url && identity) {
+            setHostUrl(url);
+            setScreen('agents');
+          } else {
+            setScreen('pairing');
+          }
         }
       } catch (err) {
         console.error('Error loading initial pairing state:', err);
-        setScreen('pairing');
+        if (!resolved) {
+          clearTimeout(timeoutId);
+          resolved = true;
+          setScreen('pairing');
+        }
       }
     };
 
@@ -334,7 +353,8 @@ function AppContent() {
   if (screen === 'loading') {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={Colors.primary} style={{ marginBottom: 16 }} />
+        <Text style={styles.loadingText}>A inicializar o Antigravity Companion...</Text>
         <StatusBar style="light" />
       </View>
     );
@@ -483,6 +503,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
+  },
+  loadingText: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
