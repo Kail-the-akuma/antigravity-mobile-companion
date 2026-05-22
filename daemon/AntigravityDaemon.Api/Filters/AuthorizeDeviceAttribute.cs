@@ -69,15 +69,12 @@ namespace AntigravityDaemon.Api.Filters
 
             // 4. Read body payload
             string payload = string.Empty;
-            if (request.ContentLength > 0)
+            request.EnableBuffering();
+            request.Body.Position = 0;
+            using (var reader = new StreamReader(request.Body, Encoding.UTF8, leaveOpen: true))
             {
-                request.EnableBuffering();
-                request.Body.Position = 0;
-                using (var reader = new StreamReader(request.Body, Encoding.UTF8, leaveOpen: true))
-                {
-                    payload = await reader.ReadToEndAsync();
-                    request.Body.Position = 0; // Reset position so the next component/controller can read it
-                }
+                payload = await reader.ReadToEndAsync();
+                request.Body.Position = 0; // Reset position so the next component/controller can read it
             }
 
             // 5. Verify signature: payload + "|" + timestamp + "|" + nonce + "|" + secretKey
@@ -87,6 +84,17 @@ namespace AntigravityDaemon.Api.Filters
             {
                 var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(message));
                 var localSignature = BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
+
+                // Console debugging for transparent diagnostics
+                Console.WriteLine("\n[Cryptographic Signature Debug]");
+                Console.WriteLine($"  - Method:        {request.Method}");
+                Console.WriteLine($"  - Path:          {request.Path}");
+                Console.WriteLine($"  - Payload:       '{payload}'");
+                Console.WriteLine($"  - Client Sig:    {clientSignature}");
+                Console.WriteLine($"  - Computed Sig:  {localSignature}");
+                Console.WriteLine(string.Equals(localSignature, clientSignature, StringComparison.OrdinalIgnoreCase) 
+                    ? "  - Result:        ✅ MATCH" 
+                    : "  - Result:        ❌ MISMATCH");
 
                 if (!string.Equals(localSignature, clientSignature, StringComparison.OrdinalIgnoreCase))
                 {
