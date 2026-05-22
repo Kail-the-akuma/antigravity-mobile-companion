@@ -105,35 +105,57 @@ namespace AntigravityDaemon.Api.Filters
                 }
             }
 
-            // 6. Verify signature: payload + "|" + timestamp + "|" + nonce + "|" + secretKey
-            string message = $"{payload}|{timestamp}|{nonce}|{device.SecretKey}";
-            
+            // 6. Verify signature: support both raw and unicode-decoded JSON payloads (due to different JS/C# escape behaviors)
+            string decodedPayload = System.Text.RegularExpressions.Regex.Replace(
+                payload,
+                @"\\u([0-9a-fA-F]{4})",
+                m => ((char)int.Parse(m.Groups[1].Value, System.Globalization.NumberStyles.HexNumber)).ToString()
+            );
+
+            bool signaturesMatch = false;
+            string localSignature = "";
+
+            // Try first with decodedPayload
+            string messageDecoded = $"{decodedPayload}|{timestamp}|{nonce}|{device.SecretKey}";
             using (var sha256 = SHA256.Create())
             {
-                var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(message));
-                var localSignature = BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
-
-                // Console debugging for transparent diagnostics
-                Console.WriteLine("\n[Cryptographic Signature Debug]");
-                Console.WriteLine($"  - Method:        {request.Method}");
-                Console.WriteLine($"  - Path:          {request.Path}");
-                Console.WriteLine($"  - Payload:       '{payload}'");
-                Console.WriteLine($"  - Client Sig:    {clientSignature}");
-                Console.WriteLine($"  - Computed Sig:  {localSignature}");
-
+                var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(messageDecoded));
+                localSignature = BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
                 byte[] clientSigBytes = Encoding.UTF8.GetBytes(clientSignature.ToLowerInvariant());
                 byte[] localSigBytes = Encoding.UTF8.GetBytes(localSignature);
+                signaturesMatch = CryptographicOperations.FixedTimeEquals(clientSigBytes, localSigBytes);
+            }
 
-                bool signaturesMatch = CryptographicOperations.FixedTimeEquals(clientSigBytes, localSigBytes);
-                Console.WriteLine(signaturesMatch 
-                    ? "  - Result:        ✅ MATCH" 
-                    : "  - Result:        ❌ MISMATCH");
-
-                if (!signaturesMatch)
+            // If that fails, try with raw payload (fallback)
+            if (!signaturesMatch)
+            {
+                string messageRaw = $"{payload}|{timestamp}|{nonce}|{device.SecretKey}";
+                using (var sha256 = SHA256.Create())
                 {
-                    context.Result = new UnauthorizedObjectResult("Cryptographic signature mismatch. Verification failed.");
-                    return;
+                    var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(messageRaw));
+                    localSignature = BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
+                    byte[] clientSigBytes = Encoding.UTF8.GetBytes(clientSignature.ToLowerInvariant());
+                    byte[] localSigBytes = Encoding.UTF8.GetBytes(localSignature);
+                    signaturesMatch = CryptographicOperations.FixedTimeEquals(clientSigBytes, localSigBytes);
                 }
+            }
+
+            // Console debugging for transparent diagnostics
+            Console.WriteLine("\n[Cryptographic Signature Debug]");
+            Console.WriteLine($"  - Method:        {request.Method}");
+            Console.WriteLine($"  - Path:          {request.Path}");
+            Console.WriteLine($"  - Raw Payload:   '{payload}'");
+            Console.WriteLine($"  - Dec Payload:   '{decodedPayload}'");
+            Console.WriteLine($"  - Client Sig:    {clientSignature}");
+            Console.WriteLine($"  - Computed Sig:  {localSignature}");
+            Console.WriteLine(signaturesMatch 
+                ? "  - Result:        ✅ MATCH" 
+                : "  - Result:        ❌ MISMATCH");
+
+            if (!signaturesMatch)
+            {
+                context.Result = new UnauthorizedObjectResult("Cryptographic signature mismatch. Verification failed.");
+                return;
             }
 
             // Register validated nonce to fully block replay attacks

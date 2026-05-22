@@ -10,11 +10,16 @@ import {
   Platform,
   StatusBar,
   KeyboardAvoidingView,
+  Alert,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
 import { useSignalR, ChatMessage } from '../hooks/useSignalR';
 import { MessageBubble } from '../components/MessageBubble';
+import { CryptoService } from '../services/crypto';
+import * as LocalAuthentication from 'expo-local-authentication';
 
 interface Agent {
   id: string;
@@ -42,11 +47,74 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   const [sending, setSending] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [agentTyping, setAgentTyping] = useState(false);
+  const [processingApproval, setProcessingApproval] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
 
   const hubUrl = `${hostUrl}/hubs/companion`;
-  const { isConnected, incomingMessage } = useSignalR(hubUrl);
+  const { isConnected, incomingMessage, activeApproval, setActiveApproval } = useSignalR(hubUrl);
+
+  // Perform biometrics verification and sign the approval response
+  const handleApprovalResponse = async (status: 'Approved' | 'Rejected') => {
+    if (!activeApproval) return;
+
+    setProcessingApproval(true);
+    try {
+      // 1. Trigger Local Authentication (Fingerprint / Face ID / Passcode)
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+      if (hasHardware && isEnrolled) {
+        const authResult = await LocalAuthentication.authenticateAsync({
+          promptMessage: `Verifique a sua identidade para ${status === 'Approved' ? 'APROVAR' : 'REJEITAR'} este plano de execução.`,
+          fallbackLabel: 'Usar Código de Acesso',
+          disableDeviceFallback: false,
+        });
+
+        if (!authResult.success) {
+          Alert.alert('Autenticação Negada', 'Não foi possível verificar a sua identidade. Operação cancelada.');
+          setProcessingApproval(false);
+          return;
+        }
+      }
+
+      // 2. Obtain Identity and cryptographically sign the approval payload
+      const identity = await CryptoService.getIdentity();
+      if (!identity) {
+        throw new Error('Identidade do dispositivo não encontrada.');
+      }
+
+      const timestamp = new Date().toISOString();
+      const nonce = Math.random().toString(36).substring(2, 15);
+      const approvalMsg = `approval:${activeApproval.id}:${status}`;
+      
+      // Generate unique signature
+      const approvalSignature = await CryptoService.signRequest(
+        approvalMsg,
+        timestamp,
+        nonce,
+        identity.secretKey
+      );
+
+      // 3. Post signed answer back to the Daemon
+      await ApiService.request(`/api/approvals/${activeApproval.id}/respond`, 'POST', {
+        status,
+        signature: approvalSignature,
+      });
+
+      // Clear the overlay
+      setActiveApproval(null);
+      Alert.alert(
+        status === 'Approved' ? 'Aprovado' : 'Rejeitado',
+        `O plano de execução foi ${status === 'Approved' ? 'aprovado' : 'rejeitado'} com sucesso!`
+      );
+    } catch (err: any) {
+      console.error('Error processing approval response:', err);
+      Alert.alert('Erro', err.message || 'Erro ao submeter resposta de aprovação.');
+    } finally {
+      setProcessingApproval(false);
+    }
+  };
 
   // Initialize conversation on mount
   useEffect(() => {
@@ -240,8 +308,76 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Cryptographically Protected Approval Modal Overlay */}
+      {activeApproval && (
+        <Modal transparent animationType="slide" visible={!!activeApproval}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Revisão de Plano Necessária</Text>
+                <Text style={styles.modalSubtitle}>Identidade Criptográfica Verificada</Text>
+              </View>
+
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                <Text style={styles.modalDescription}>
+                  O Agente Antigravity gerou um plano de alteração e requer a sua aprovação explícita antes de avançar com o código:
+                </Text>
+
+                <View style={planCardStyle}>
+                  <Text style={styles.planLabel}>Detalhes do Plano / Passos:</Text>
+                  <Text style={styles.planStepsText}>
+                    {activeApproval.planStepsJson || 'Nenhum detalhe adicional fornecido.'}
+                  </Text>
+                </View>
+
+                <View style={styles.securityAlert}>
+                  <Text style={styles.securityAlertTitle}>🔒 Segurança Biométrica Ativa</Text>
+                  <Text style={styles.securityAlertText}>
+                    A sua confirmação irá gerar uma assinatura digital única vinculada à chave simétrica deste dispositivo móvel.
+                  </Text>
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.rejectButton]}
+                  onPress={() => handleApprovalResponse('Rejected')}
+                  disabled={processingApproval}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.modalButtonText}>Rejeitar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.approveButton]}
+                  onPress={() => handleApprovalResponse('Approved')}
+                  disabled={processingApproval}
+                  activeOpacity={0.8}
+                >
+                  {processingApproval ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={styles.modalButtonText}>Aprovar</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
+};
+
+// Extracted plan card style to be dynamic or flat safely
+const planCardStyle = {
+  backgroundColor: Colors.surfaceLight,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderColor: Colors.border,
+  padding: 16,
+  marginBottom: 16,
 };
 
 const styles = StyleSheet.create({
@@ -395,5 +531,103 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 20,
     fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 15, 17, 0.95)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: '700',
+    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  planLabel: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  planStepsText: {
+    fontSize: 14,
+    color: Colors.text,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    lineHeight: 18,
+  },
+  securityAlert: {
+    backgroundColor: 'rgba(94, 92, 230, 0.1)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(94, 92, 230, 0.2)',
+    padding: 12,
+    marginBottom: 20,
+  },
+  securityAlertTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginBottom: 4,
+  },
+  securityAlertText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    lineHeight: 16,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: 20,
+    borderTopWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: 'space-between',
+  },
+  modalButton: {
+    flex: 0.48,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  approveButton: {
+    backgroundColor: Colors.success,
+  },
+  rejectButton: {
+    backgroundColor: Colors.danger,
+  },
+  modalButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

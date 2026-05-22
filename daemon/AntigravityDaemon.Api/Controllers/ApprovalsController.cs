@@ -23,21 +23,45 @@ namespace AntigravityDaemon.Api.Controllers
             _hubContext = hubContext;
         }
 
-        public record RequestApprovalPayload(Guid TaskId, string PlanStepsJson);
+        public record RequestApprovalPayload(Guid? TaskId, string PlanStepsJson, string? Prompt);
 
         // POST: api/approvals/request (Called locally by the Antigravity Agent to pause and wait for approval)
         [HttpPost("request")]
         public async Task<IActionResult> RequestApproval([FromBody] RequestApprovalPayload payload)
         {
-            var taskExists = await _context.Tasks.AnyAsync(t => t.Id == payload.TaskId);
-            if (!taskExists)
+            Guid resolvedTaskId;
+
+            if (!payload.TaskId.HasValue || payload.TaskId.Value == Guid.Empty)
             {
-                return BadRequest("Task not found.");
+                // Create a new TaskItem dynamically for this agent request
+                var newTask = new TaskItem
+                {
+                    Prompt = payload.Prompt ?? "Solicitação de Permissão",
+                    Status = "Running",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.Tasks.Add(newTask);
+                await _context.SaveChangesAsync();
+                resolvedTaskId = newTask.Id;
+
+                // Broadcast the new task to the mobile client in real-time
+                await _hubContext.Clients.All.SendAsync("ReceiveTaskUpdate", newTask.Id.ToString(), newTask.Status, newTask.PlanJson);
+            }
+            else
+            {
+                resolvedTaskId = payload.TaskId.Value;
+                var taskExists = await _context.Tasks.AnyAsync(t => t.Id == resolvedTaskId);
+                if (!taskExists)
+                {
+                    return BadRequest("Task not found.");
+                }
             }
 
             var approval = new ApprovalRequest
             {
-                TaskId = payload.TaskId,
+                TaskId = resolvedTaskId,
                 PlanStepsJson = payload.PlanStepsJson,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow,

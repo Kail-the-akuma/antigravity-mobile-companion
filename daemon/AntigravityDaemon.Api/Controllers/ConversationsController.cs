@@ -232,6 +232,96 @@ namespace AntigravityDaemon.Api.Controllers
             return Ok(userMessage);
         }
 
+        public record PushAgentMessageRequest(string Content);
+
+        // POST: api/conversations/remote/{remoteConversationId}/agent-message
+        // Allows a local agent session (from the desktop IDE) to push its final report/message to the mobile companion app.
+        [HttpPost("remote/{remoteConversationId}/agent-message")]
+        public async Task<IActionResult> PushAgentMessage(string remoteConversationId, [FromBody] PushAgentMessageRequest request)
+        {
+            if (string.IsNullOrEmpty(remoteConversationId))
+            {
+                return BadRequest("remoteConversationId is required.");
+            }
+
+            var conversation = await _context.Conversations
+                .Include(c => c.Messages)
+                .FirstOrDefaultAsync(c => c.RemoteConversationId == remoteConversationId);
+
+            if (conversation == null)
+            {
+                // Create a new Conversation for this remote session if it doesn't exist
+                var antigravityId = new Guid("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+                var agent = await _context.Agents.FindAsync(antigravityId);
+                if (agent == null)
+                {
+                    return BadRequest("Default agent not found.");
+                }
+
+                conversation = new Conversation
+                {
+                    AgentId = antigravityId,
+                    Title = $"Conversa {remoteConversationId.Substring(0, Math.Min(8, remoteConversationId.Length))}...",
+                    RemoteConversationId = remoteConversationId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.Conversations.Add(conversation);
+                await _context.SaveChangesAsync();
+            }
+
+            // Sync any existing messages from the desktop IDE transcript logs so the mobile app has full context
+            await SyncLocalConversationsAsync();
+
+            // Re-fetch the conversation to get newly synced messages if any
+            conversation = await _context.Conversations
+                .Include(c => c.Messages)
+                .FirstOrDefaultAsync(c => c.RemoteConversationId == remoteConversationId) ?? conversation;
+
+            // Check if the exact message or a highly similar message from the agent already exists within the last 15 seconds to avoid duplicates
+            var sanitizedContent = SanitizeMessageContent(request.Content, "agent");
+            var threshold = DateTime.UtcNow.AddSeconds(-15);
+            bool isDuplicate = conversation.Messages.Any(m => 
+                m.Role == "agent" && 
+                m.Timestamp >= threshold && 
+                (m.Content == sanitizedContent || m.Content.Contains(sanitizedContent.Substring(0, Math.Min(Math.Max(1, sanitizedContent.Length), 20)))));
+
+            if (isDuplicate)
+            {
+                return Ok(new { message = "Duplicate message ignored.", conversationId = conversation.Id });
+            }
+
+            var agentMessage = new ConversationMessage
+            {
+                ConversationId = conversation.Id,
+                Role = "agent",
+                Content = sanitizedContent,
+                Timestamp = DateTime.UtcNow
+            };
+
+            _context.ConversationMessages.Add(agentMessage);
+            conversation.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            // Broadcast via SignalR to update the mobile app
+            await _hubContext.Clients.All.SendAsync(
+                "ReceiveMessage",
+                conversation.Id.ToString(),
+                agentMessage.Id.ToString(),
+                "agent",
+                agentMessage.Content,
+                agentMessage.Timestamp.ToString("o")
+            );
+
+            return Ok(new
+            {
+                message = "Agent message pushed successfully.",
+                conversationId = conversation.Id,
+                messageId = agentMessage.Id
+            });
+        }
+
         private static async Task<string> RunAgentCliAsync(string[] arguments)
         {
             string lsAddress = await ResolveAntigravityLsAddressAsync();
@@ -579,6 +669,28 @@ namespace AntigravityDaemon.Api.Controllers
                 throw new FileNotFoundException($"Transcript log file not found at {logPath}");
             }
 
+            // Capture the last step index in the transcript log before polling starts
+            int lastStepIndex = -1;
+            try
+            {
+                var initialLines = await System.IO.File.ReadAllLinesAsync(logPath);
+                for (int i = initialLines.Length - 1; i >= 0; i--)
+                {
+                    var line = initialLines[i];
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    var parsed = JsonSerializer.Deserialize<TranscriptLine>(line);
+                    if (parsed != null)
+                    {
+                        lastStepIndex = parsed.step_index;
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Companion] Warning reading initial transcript lines: {ex.Message}");
+            }
+
             int timeoutSeconds = 120;
             var startTime = DateTime.UtcNow;
 
@@ -604,13 +716,17 @@ namespace AntigravityDaemon.Api.Controllers
                 for (int i = 0; i < lines.Count; i++)
                 {
                     try
-                    {
+                     {
                         var parsed = JsonSerializer.Deserialize<TranscriptLine>(lines[i]);
                         if (parsed != null)
                         {
                             parsedLines.Add(parsed);
 
-                            if (sentMessageIndex == -1 && parsed.content != null && parsed.content.Contains(expectedContent))
+                            // Match the newly appended message (step_index must be strictly greater than lastStepIndex)
+                            if (parsed.step_index > lastStepIndex && 
+                                sentMessageIndex == -1 && 
+                                parsed.content != null && 
+                                parsed.content.Contains(expectedContent))
                             {
                                 sentMessageIndex = parsedLines.Count - 1;
                             }
@@ -621,12 +737,17 @@ namespace AntigravityDaemon.Api.Controllers
                     }
                 }
 
-                if (sentMessageIndex == -1 && parsedLines.Any())
+                // If not matched by content, fallback ONLY within the newly appended steps to avoid matching historical logs
+                if (sentMessageIndex == -1)
                 {
-                    var lastUserInput = parsedLines.LastOrDefault(l => l.source == "USER_EXPLICIT" || l.source == "SYSTEM");
-                    if (lastUserInput != null)
+                    for (int i = 0; i < parsedLines.Count; i++)
                     {
-                        sentMessageIndex = parsedLines.IndexOf(lastUserInput);
+                        var pl = parsedLines[i];
+                        if (pl.step_index > lastStepIndex && (pl.source == "USER_EXPLICIT" || pl.source == "SYSTEM"))
+                        {
+                            sentMessageIndex = i;
+                            break;
+                        }
                     }
                 }
 
