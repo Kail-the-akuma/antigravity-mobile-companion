@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,10 +13,14 @@ import {
 import { Colors } from '../theme/colors';
 import { CryptoService } from '../services/crypto';
 import { ApiService } from '../services/api';
+import * as SecureStore from 'expo-secure-store';
+
 
 interface PairingScreenProps {
   onPairSuccess: () => void;
 }
+
+const LAST_IP_KEY = 'antigravity_companion_last_ip';
 
 export const PairingScreen: React.FC<PairingScreenProps> = ({ onPairSuccess }) => {
   const [ip, setIp] = useState('');
@@ -24,6 +28,13 @@ export const PairingScreen: React.FC<PairingScreenProps> = ({ onPairSuccess }) =
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Restore last used IP on mount
+  useEffect(() => {
+    SecureStore.getItemAsync(LAST_IP_KEY).then((saved) => {
+      if (saved) setIp(saved);
+    });
+  }, []);
 
   const handlePair = async () => {
     setError(null);
@@ -61,8 +72,9 @@ export const PairingScreen: React.FC<PairingScreenProps> = ({ onPairSuccess }) =
         throw new Error(errText || 'Token inválido ou expirado.');
       }
 
-      // 4. Save host URL on successful pairing
+      // 4. Save host URL and last-used IP on successful pairing
       await ApiService.setHostUrl(hostUrl);
+      await SecureStore.setItemAsync(LAST_IP_KEY, sanitizedIp);
       onPairSuccess();
     } catch (err: any) {
       console.error('Pairing error:', err);

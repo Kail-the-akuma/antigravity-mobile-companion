@@ -3,21 +3,37 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { Colors } from './src/theme/colors';
 import { PairingScreen } from './src/screens/PairingScreen';
-import { DashboardScreen } from './src/screens/DashboardScreen';
+import { AgentListScreen } from './src/screens/AgentListScreen';
+import { ConversationScreen } from './src/screens/ConversationScreen';
 import { ApiService } from './src/services/api';
 import { CryptoService } from './src/services/crypto';
 
+interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  iconEmoji: string;
+  isOnline: boolean;
+  capabilities: string;
+  lastPing: string;
+}
+
+type Screen = 'loading' | 'pairing' | 'agents' | 'conversation';
+
 export default function App() {
-  const [screen, setScreen] = useState<'loading' | 'pairing' | 'dashboard'>('loading');
+  const [screen, setScreen] = useState<Screen>('loading');
+  const [hostUrl, setHostUrl] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
 
   useEffect(() => {
     const checkPairingStatus = async () => {
       try {
-        const hostUrl = await ApiService.getHostUrl();
+        const url = await ApiService.getHostUrl();
         const identity = await CryptoService.getIdentity();
 
-        if (hostUrl && identity) {
-          setScreen('dashboard');
+        if (url && identity) {
+          setHostUrl(url);
+          setScreen('agents');
         } else {
           setScreen('pairing');
         }
@@ -29,6 +45,28 @@ export default function App() {
 
     checkPairingStatus();
   }, []);
+
+  const handlePairSuccess = async () => {
+    const url = await ApiService.getHostUrl();
+    setHostUrl(url);
+    setScreen('agents');
+  };
+
+  const handleSelectAgent = (agent: Agent) => {
+    setSelectedAgent(agent);
+    setScreen('conversation');
+  };
+
+  const handleUnpair = () => {
+    setHostUrl(null);
+    setSelectedAgent(null);
+    setScreen('pairing');
+  };
+
+  const handleBackToAgents = () => {
+    setSelectedAgent(null);
+    setScreen('agents');
+  };
 
   if (screen === 'loading') {
     return (
@@ -42,10 +80,22 @@ export default function App() {
   return (
     <>
       <View style={styles.container}>
-        {screen === 'pairing' ? (
-          <PairingScreen onPairSuccess={() => setScreen('dashboard')} />
-        ) : (
-          <DashboardScreen onUnpair={() => setScreen('pairing')} />
+        {screen === 'pairing' && (
+          <PairingScreen onPairSuccess={handlePairSuccess} />
+        )}
+        {screen === 'agents' && hostUrl && (
+          <AgentListScreen
+            hostUrl={hostUrl}
+            onSelectAgent={handleSelectAgent}
+            onUnpair={handleUnpair}
+          />
+        )}
+        {screen === 'conversation' && hostUrl && selectedAgent && (
+          <ConversationScreen
+            agent={selectedAgent}
+            hostUrl={hostUrl}
+            onBack={handleBackToAgents}
+          />
         )}
       </View>
       <StatusBar style="light" />

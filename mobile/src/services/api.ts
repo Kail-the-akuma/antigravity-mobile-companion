@@ -62,4 +62,30 @@ export const ApiService = {
 
     return response.status !== 204 ? await response.json() : null;
   },
+
+  // ── Agents ──────────────────────────────────────────────────────────────
+  getAgents: async (): Promise<any[]> => {
+    const hostUrl = await ApiService.getHostUrl();
+    if (!hostUrl) throw new Error('Not paired.');
+    const response = await fetch(`${hostUrl}/api/agents`);
+    if (!response.ok) throw new Error('Failed to fetch agents.');
+    return response.json();
+  },
+
+  // ── Conversations ────────────────────────────────────────────────────────
+  getConversations: async (): Promise<any[]> => {
+    return ApiService.request('/api/conversations');
+  },
+
+  createConversation: async (agentId: string, title?: string): Promise<any> => {
+    return ApiService.request('/api/conversations', 'POST', { agentId, title });
+  },
+
+  getMessages: async (conversationId: string): Promise<any[]> => {
+    return ApiService.request(`/api/conversations/${conversationId}/messages`);
+  },
+
+  sendMessage: async (conversationId: string, content: string): Promise<any> => {
+    return ApiService.request(`/api/conversations/${conversationId}/messages`, 'POST', { content });
+  },
 };

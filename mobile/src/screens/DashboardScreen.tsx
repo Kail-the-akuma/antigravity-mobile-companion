@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
-  SafeAreaView,
   Alert,
   Platform,
   StatusBar,
@@ -174,7 +173,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onUnpair }) =>
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -260,7 +259,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onUnpair }) =>
       {activeApproval && (
         <Modal transparent animationType="slide" visible={!!activeApproval}>
           <View style={styles.modalOverlay}>
-            <SafeAreaView style={styles.modalContent}>
+            <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Revisão de Plano Necessária</Text>
                 <Text style={styles.modalSubtitle}>Identidade Criptográfica Verificada</Text>
@@ -309,11 +308,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onUnpair }) =>
                   )}
                 </TouchableOpacity>
               </View>
-            </SafeAreaView>
+            </View>
           </View>
         </Modal>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 

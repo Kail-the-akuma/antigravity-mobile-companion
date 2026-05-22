@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import * as signalR from '@microsoft/signalr';
 
 export interface TaskItem {
@@ -19,10 +19,20 @@ export interface ApprovalRequest {
   createdAt: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  role: 'user' | 'agent';
+  content: string;
+  timestamp: string;
+}
+
 export const useSignalR = (hubUrl: string | null) => {
   const [isConnected, setIsConnected] = useState(false);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [activeApproval, setActiveApproval] = useState<ApprovalRequest | null>(null);
+  const [incomingMessage, setIncomingMessage] = useState<ChatMessage | null>(null);
+  const [agentStatusUpdate, setAgentStatusUpdate] = useState<{ agentId: string; isOnline: boolean } | null>(null);
   const connectionRef = useRef<signalR.HubConnection | null>(null);
 
   useEffect(() => {
@@ -70,17 +80,25 @@ export const useSignalR = (hubUrl: string | null) => {
       });
     });
 
-    connection.onclose(() => {
-      setIsConnected(false);
+    // New: real-time conversation messages
+    connection.on('ReceiveMessage', (conversationId: string, messageId: string, role: string, content: string, timestamp: string) => {
+      setIncomingMessage({
+        id: messageId,
+        conversationId,
+        role: role as 'user' | 'agent',
+        content,
+        timestamp,
+      });
     });
 
-    connection.onreconnecting(() => {
-      setIsConnected(false);
+    // New: agent online/offline status changes
+    connection.on('AgentStatusChanged', (agentId: string, isOnline: boolean) => {
+      setAgentStatusUpdate({ agentId, isOnline });
     });
 
-    connection.onreconnected(() => {
-      setIsConnected(true);
-    });
+    connection.onclose(() => setIsConnected(false));
+    connection.onreconnecting(() => setIsConnected(false));
+    connection.onreconnected(() => setIsConnected(true));
 
     startConnection();
 
@@ -91,5 +109,13 @@ export const useSignalR = (hubUrl: string | null) => {
     };
   }, [hubUrl]);
 
-  return { isConnected, tasks, setTasks, activeApproval, setActiveApproval };
+  return {
+    isConnected,
+    tasks,
+    setTasks,
+    activeApproval,
+    setActiveApproval,
+    incomingMessage,
+    agentStatusUpdate,
+  };
 };

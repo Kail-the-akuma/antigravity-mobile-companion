@@ -8,27 +8,37 @@ namespace AntigravityDaemon.Api.Hubs
         public override async Task OnConnectedAsync()
         {
             await base.OnConnectedAsync();
-            // Client connected
             System.Console.WriteLine($"Client connected to CompanionHub: {Context.ConnectionId}");
         }
 
         public override async Task OnDisconnectedAsync(System.Exception? exception)
         {
-            // Client disconnected
             System.Console.WriteLine($"Client disconnected from CompanionHub: {Context.ConnectionId}");
             await base.OnDisconnectedAsync(exception);
         }
 
-        // Method to send status update to clients
+        // Task lifecycle events
         public async Task BroadcastTaskUpdate(string taskId, string status, string planJson)
         {
             await Clients.All.SendAsync("ReceiveTaskUpdate", taskId, status, planJson);
         }
 
-        // Method to send approval request to clients
+        // Plan approval request
         public async Task SendApprovalRequest(string approvalId, string taskId, string planStepsJson)
         {
             await Clients.All.SendAsync("ReceiveApprovalRequest", approvalId, taskId, planStepsJson);
+        }
+
+        // Conversation message delivery
+        public async Task BroadcastMessage(string conversationId, string messageId, string role, string content, string timestamp)
+        {
+            await Clients.All.SendAsync("ReceiveMessage", conversationId, messageId, role, content, timestamp);
+        }
+
+        // Agent online/offline status
+        public async Task BroadcastAgentStatus(string agentId, bool isOnline)
+        {
+            await Clients.All.SendAsync("AgentStatusChanged", agentId, isOnline);
         }
     }
 }
