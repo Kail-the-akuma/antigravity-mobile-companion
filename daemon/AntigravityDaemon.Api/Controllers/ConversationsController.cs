@@ -152,6 +152,17 @@ namespace AntigravityDaemon.Api.Controllers
             var agentName = conversation.Agent?.Name ?? "Antigravity";
             var convId = id;
 
+            // Reflect the prompt on the computer terminal
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("\n==================================================");
+            Console.WriteLine($"[Companion] 📱 Mensagem enviada do telemóvel para {agentName}:");
+            Console.WriteLine($"👉 \"{request.Content}\"");
+            Console.WriteLine("==================================================\n");
+            Console.ResetColor();
+
+            // Write prompt to last_companion_prompt.md in the workspace
+            await WriteLastPromptToFileAsync(agentName, convId, request.Content);
+
             _ = Task.Run(async () =>
             {
                 try
@@ -179,6 +190,14 @@ namespace AntigravityDaemon.Api.Controllers
                     }
 
                     string agentReply = await PollAgentResponseAsync(remoteId!, request.Content);
+
+                    // Log agent response to console
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("\n==================================================");
+                    Console.WriteLine($"[Companion] 🤖 Resposta recebida de {agentName}:");
+                    Console.WriteLine($"👉 \"{agentReply}\"");
+                    Console.WriteLine("==================================================\n");
+                    Console.ResetColor();
 
                     var agentMessage = new ConversationMessage
                     {
@@ -244,11 +263,7 @@ namespace AntigravityDaemon.Api.Controllers
                 if (key.StartsWith("ANTIGRAVITY_", StringComparison.OrdinalIgnoreCase) ||
                     key.StartsWith("AGY_", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Copy existing project metadata so language_server knows which environment to target
-                    if (key.Equals("ANTIGRAVITY_SOURCE_METADATA", StringComparison.OrdinalIgnoreCase))
-                    {
-                        startInfo.EnvironmentVariables[key] = val;
-                    }
+                    // Do NOT copy ANY Antigravity env vars here. We will set them explicitly below.
                     continue;
                 }
 
@@ -257,9 +272,17 @@ namespace AntigravityDaemon.Api.Controllers
 
             startInfo.EnvironmentVariables["ANTIGRAVITY_LS_ADDRESS"] = lsAddress;
             startInfo.EnvironmentVariables["ANTIGRAVITY_CSRF_TOKEN"] = csrfToken;
+            
             if (!string.IsNullOrEmpty(projectId))
             {
                 startInfo.EnvironmentVariables["ANTIGRAVITY_PROJECT_ID"] = projectId;
+                
+                // Only propagate ANTIGRAVITY_SOURCE_METADATA if we actually have a project ID to avoid the gRPC missing project_id error!
+                string? sourceMetadata = Environment.GetEnvironmentVariable("ANTIGRAVITY_SOURCE_METADATA");
+                if (!string.IsNullOrEmpty(sourceMetadata))
+                {
+                    startInfo.EnvironmentVariables["ANTIGRAVITY_SOURCE_METADATA"] = sourceMetadata;
+                }
             }
 
             using var process = new Process { StartInfo = startInfo };
@@ -810,6 +833,39 @@ namespace AntigravityDaemon.Api.Controllers
             finally
             {
                 _syncSemaphore.Release();
+            }
+        }
+
+        private async Task WriteLastPromptToFileAsync(string agentName, Guid convId, string prompt)
+        {
+            try
+            {
+                string workspacePath = _workspaceService.GetWorkspacePath();
+                if (Directory.Exists(workspacePath))
+                {
+                    string filePath = Path.Combine(workspacePath, "last_companion_prompt.md");
+                    string fileContent = $@"# Último Prompt do Telemóvel
+
+**Agente:** {agentName}
+**Data:** {DateTime.Now:dd/MM/yyyy HH:mm:ss}
+**Conversa ID:** {convId}
+
+## Prompt Enviado:
+> {prompt}
+
+---
+*Ficheiro gerado automaticamente pelo Antigravity Mobile Companion Daemon.*
+";
+                    await System.IO.File.WriteAllTextAsync(filePath, fileContent, System.Text.Encoding.UTF8);
+                    
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Console.WriteLine($"[Companion] 📂 Ficheiro de prompt atualizado no workspace: {filePath}");
+                    Console.ResetColor();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Erro ao escrever prompt para o workspace: {ex.Message}");
             }
         }
     }
