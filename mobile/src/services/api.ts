@@ -2,8 +2,25 @@ import { CryptoService } from './crypto';
 import * as SecureStore from 'expo-secure-store';
 
 const HOST_STORAGE_KEY = 'antigravity_companion_host_url';
+const FALLBACK_HOST_STORAGE_KEY = 'antigravity_companion_fallback_host_url';
 
 let onUnauthorizedCallback: (() => void) | null = null;
+
+const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 3500): Promise<Response> => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+};
 
 export const ApiService = {
   setUnauthorizedCallback: (callback: () => void) => {
@@ -20,6 +37,19 @@ export const ApiService = {
 
   clearHostUrl: async (): Promise<void> => {
     await SecureStore.deleteItemAsync(HOST_STORAGE_KEY);
+    await SecureStore.deleteItemAsync(FALLBACK_HOST_STORAGE_KEY).catch(() => {});
+  },
+
+  setFallbackHostUrl: async (url: string): Promise<void> => {
+    await SecureStore.setItemAsync(FALLBACK_HOST_STORAGE_KEY, url);
+  },
+
+  getFallbackHostUrl: async (): Promise<string | null> => {
+    return await SecureStore.getItemAsync(FALLBACK_HOST_STORAGE_KEY);
+  },
+
+  clearFallbackHostUrl: async (): Promise<void> => {
+    await SecureStore.deleteItemAsync(FALLBACK_HOST_STORAGE_KEY);
   },
 
   // Helper to make signed requests to the protected daemon API
@@ -39,7 +69,7 @@ export const ApiService = {
     }
 
     const { deviceId, secretKey } = identity;
-    const url = `${hostUrl}${endpoint}`;
+    let url = `${hostUrl}${endpoint}`;
     const payload = bodyData ? JSON.stringify(bodyData) : '';
     const timestamp = new Date().toISOString();
     const nonce = Math.random().toString(36).substring(2, 15);
@@ -55,11 +85,34 @@ export const ApiService = {
       'X-Signature': signature,
     };
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: bodyData ? payload : undefined,
-    });
+    let response: Response;
+    try {
+      // Try local URL first with timeout
+      response = await fetchWithTimeout(url, {
+        method,
+        headers,
+        body: bodyData ? payload : undefined,
+      }, 3500);
+    } catch (err) {
+      // Fallback if local request fails (e.g. timeout or Network Request Failed)
+      const fallbackHostUrl = await ApiService.getFallbackHostUrl();
+      if (fallbackHostUrl) {
+        console.log(`[ApiService] Local connection failed. Falling back to public tunnel: ${fallbackHostUrl}`);
+        url = `${fallbackHostUrl}${endpoint}`;
+        
+        // Add bypass header for localtunnel
+        headers['bypass-tunnel-reminder'] = 'true';
+        
+        // No short timeout on remote tunnel since cellular network might be slower
+        response = await fetch(url, {
+          method,
+          headers,
+          body: bodyData ? payload : undefined,
+        });
+      } else {
+        throw err;
+      }
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -78,9 +131,24 @@ export const ApiService = {
   getAgents: async (): Promise<any[]> => {
     const hostUrl = await ApiService.getHostUrl();
     if (!hostUrl) throw new Error('Not paired.');
-    const response = await fetch(`${hostUrl}/api/agents`);
-    if (!response.ok) throw new Error('Failed to fetch agents.');
-    return response.json();
+    
+    try {
+      const response = await fetchWithTimeout(`${hostUrl}/api/agents`, {}, 3500);
+      if (!response.ok) throw new Error('Failed to fetch agents.');
+      return response.json();
+    } catch (err) {
+      const fallbackHostUrl = await ApiService.getFallbackHostUrl();
+      if (fallbackHostUrl) {
+        console.log(`[ApiService] getAgents local failed. Trying fallback tunnel: ${fallbackHostUrl}`);
+        const response = await fetch(`${fallbackHostUrl}/api/agents`, {
+          headers: { 'bypass-tunnel-reminder': 'true' }
+        });
+        if (!response.ok) throw new Error('Failed to fetch agents.');
+        return response.json();
+      } else {
+        throw err;
+      }
+    }
   },
 
   // ── Conversations ────────────────────────────────────────────────────────

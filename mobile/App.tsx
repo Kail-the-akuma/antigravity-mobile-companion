@@ -50,6 +50,7 @@ type Screen = 'loading' | 'pairing' | 'agents' | 'conversations' | 'conversation
 function AppContent() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [hostUrl, setHostUrl] = useState<string | null>(null);
+  const [fallbackHostUrl, setFallbackHostUrl] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [processingApproval, setProcessingApproval] = useState(false);
@@ -57,13 +58,14 @@ function AppContent() {
 
   // Initialize global SignalR Hub connection if device is paired
   const hubUrl = hostUrl ? `${hostUrl}/hubs/companion` : null;
+  const fallbackHubUrl = fallbackHostUrl ? `${fallbackHostUrl}/hubs/companion` : null;
   const { 
     isConnected, 
     activeApproval, 
     setActiveApproval,
     incomingMessage,
     activeExecutionState
-  } = useSignalR(hubUrl);
+  } = useSignalR(hubUrl, fallbackHubUrl);
 
   // EAS Over-The-Air Automatic Updates Hook
   useEffect(() => {
@@ -281,6 +283,7 @@ function AppContent() {
 
       try {
         const url = await ApiService.getHostUrl();
+        const fallbackUrl = await ApiService.getFallbackHostUrl();
         const identity = await CryptoService.getIdentity();
 
         if (!resolved) {
@@ -288,6 +291,7 @@ function AppContent() {
           resolved = true;
           if (url && identity) {
             setHostUrl(url);
+            setFallbackHostUrl(fallbackUrl);
             setScreen('agents');
           } else {
             setScreen('pairing');
@@ -308,7 +312,9 @@ function AppContent() {
 
   const handlePairSuccess = async () => {
     const url = await ApiService.getHostUrl();
+    const fallbackUrl = await ApiService.getFallbackHostUrl();
     setHostUrl(url);
+    setFallbackHostUrl(fallbackUrl);
     setScreen('agents');
   };
 
@@ -335,6 +341,7 @@ function AppContent() {
       console.error('Error clearing pairing state:', e);
     }
     setHostUrl(null);
+    setFallbackHostUrl(null);
     setSelectedAgent(null);
     setSelectedConversationId(null);
     setScreen('pairing');

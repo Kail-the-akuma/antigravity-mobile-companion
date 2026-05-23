@@ -72,8 +72,14 @@ export const PairingScreen: React.FC<PairingScreenProps> = ({ onPairSuccess }) =
         throw new Error(errText || 'Token inválido ou expirado.');
       }
 
-      // 4. Save host URL and last-used IP on successful pairing
+      const data = await response.json();
+
+      // 4. Save host URL, fallback tunnel URL and last-used IP on successful pairing
       await ApiService.setHostUrl(hostUrl);
+      if (data && data.tunnelUrl) {
+        await ApiService.setFallbackHostUrl(data.tunnelUrl);
+        console.log('[PairingScreen] Public fallback tunnel URL registered:', data.tunnelUrl);
+      }
       await SecureStore.setItemAsync(LAST_IP_KEY, sanitizedIp);
       onPairSuccess();
     } catch (err: any) {

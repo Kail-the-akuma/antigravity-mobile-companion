@@ -81,7 +81,8 @@ namespace AntigravityDaemon.Api.Controllers
                 ip = localIp,
                 port = 5117,
                 expiresAt = _tokenExpiry,
-                devices = devices
+                devices = devices,
+                tunnelUrl = AntigravityDaemon.Api.TunnelManager.PublicTunnelUrl
             });
         }
 
@@ -137,7 +138,8 @@ namespace AntigravityDaemon.Api.Controllers
             return Ok(new
             {
                 message = "Device paired successfully!",
-                deviceId = device.Id
+                deviceId = device.Id,
+                tunnelUrl = AntigravityDaemon.Api.TunnelManager.PublicTunnelUrl
             });
         }
 

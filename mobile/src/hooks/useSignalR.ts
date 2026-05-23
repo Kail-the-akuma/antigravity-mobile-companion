@@ -28,7 +28,7 @@ export interface ChatMessage {
   timestamp: string;
 }
 
-export const useSignalR = (hubUrl: string | null) => {
+export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null = null) => {
   const [isConnected, setIsConnected] = useState(false);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [activeApproval, setActiveApproval] = useState<ApprovalRequest | null>(null);
@@ -40,88 +40,148 @@ export const useSignalR = (hubUrl: string | null) => {
   useEffect(() => {
     if (!hubUrl) return;
 
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl(hubUrl)
-      .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Warning)
-      .build();
+    let activeConnection: signalR.HubConnection | null = null;
+    let isShutDown = false;
 
-    connectionRef.current = connection;
+    const buildAndSetupConnection = (url: string, isFallback: boolean) => {
+      const builder = new signalR.HubConnectionBuilder()
+        .withAutomaticReconnect()
+        .configureLogging(signalR.LogLevel.Warning);
 
-    const startConnection = async () => {
-      try {
-        await connection.start();
-        console.log('Connected to SignalR Hub successfully');
-        setIsConnected(true);
-      } catch (err) {
-        console.warn('SignalR connection failed, retrying in 5 seconds...', err);
-        setIsConnected(false);
-        setTimeout(startConnection, 5000);
+      if (isFallback) {
+        builder.withUrl(url, {
+          headers: {
+            'bypass-tunnel-reminder': 'true'
+          }
+        });
+      } else {
+        builder.withUrl(url);
       }
+
+      const connection = builder.build();
+
+      connection.on('ReceiveTaskUpdate', (id: string, status: string, planJson?: string) => {
+        setTasks((prevTasks) => {
+          const index = prevTasks.findIndex((t) => t.id === id);
+          if (index > -1) {
+            const updated = [...prevTasks];
+            updated[index] = { ...updated[index], status, planJson, updatedAt: new Date().toISOString() };
+            return updated;
+          }
+          return prevTasks;
+        });
+      });
+
+      connection.on('ReceiveApprovalRequest', (id: string, taskId: string, planStepsJson: string, conversationId?: string) => {
+        setActiveApproval({
+          id,
+          taskId,
+          planStepsJson,
+          status: 'Pending',
+          createdAt: new Date().toISOString(),
+          conversationId,
+        });
+      });
+
+      connection.on('ReceiveMessage', (conversationId: string, messageId: string, role: string, content: string, timestamp: string) => {
+        setIncomingMessage({
+          id: messageId,
+          conversationId,
+          role: role as 'user' | 'agent' | 'user-ide',
+          content,
+          timestamp,
+        });
+
+        // Auto-clear active desktop execution state when receiving agent responses
+        if (role === 'agent') {
+          setActiveExecutionState(null);
+        }
+      });
+
+      connection.on('AgentStatusChanged', (agentId: string, isOnline: boolean) => {
+        setAgentStatusUpdate({ agentId, isOnline });
+      });
+
+      connection.on('ReceiveAgentExecutionState', (conversationId: string, prompt: string, isActive: boolean) => {
+        console.log('SignalR: ReceiveAgentExecutionState', conversationId, prompt, isActive);
+        setActiveExecutionState(isActive ? { conversationId, prompt, isActive } : null);
+      });
+
+      connection.onclose(() => {
+        if (!isShutDown) setIsConnected(false);
+      });
+      connection.onreconnecting(() => {
+        if (!isShutDown) setIsConnected(false);
+      });
+      connection.onreconnected(() => {
+        if (!isShutDown) setIsConnected(true);
+      });
+
+      return connection;
     };
 
-    connection.on('ReceiveTaskUpdate', (id: string, status: string, planJson?: string) => {
-      setTasks((prevTasks) => {
-        const index = prevTasks.findIndex((t) => t.id === id);
-        if (index > -1) {
-          const updated = [...prevTasks];
-          updated[index] = { ...updated[index], status, planJson, updatedAt: new Date().toISOString() };
-          return updated;
+    const startConnection = async () => {
+      if (isShutDown) return;
+
+      console.log(`[SignalR] Attempting local hub connection: ${hubUrl}`);
+      activeConnection = buildAndSetupConnection(hubUrl, false);
+      connectionRef.current = activeConnection;
+
+      try {
+        const startPromise = activeConnection.start();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Local SignalR connection timeout')), 3500)
+        );
+
+        await Promise.race([startPromise, timeoutPromise]);
+        console.log('[SignalR] Connected to local SignalR Hub successfully');
+        setIsConnected(true);
+      } catch (err) {
+        console.warn('[SignalR] Local connection failed:', err);
+        if (isShutDown) return;
+
+        // Clean up failed local connection
+        if (activeConnection) {
+          activeConnection.stop().catch(() => {});
+          activeConnection = null;
         }
-        return prevTasks;
-      });
-    });
 
-    connection.on('ReceiveApprovalRequest', (id: string, taskId: string, planStepsJson: string, conversationId?: string) => {
-      setActiveApproval({
-        id,
-        taskId,
-        planStepsJson,
-        status: 'Pending',
-        createdAt: new Date().toISOString(),
-        conversationId,
-      });
-    });
+        // Try public fallback tunnel hub connection if available
+        if (fallbackHubUrl) {
+          console.log(`[SignalR] Local failed. Retrying with remote public fallback: ${fallbackHubUrl}`);
+          activeConnection = buildAndSetupConnection(fallbackHubUrl, true);
+          connectionRef.current = activeConnection;
 
-    // New: real-time conversation messages
-    connection.on('ReceiveMessage', (conversationId: string, messageId: string, role: string, content: string, timestamp: string) => {
-      setIncomingMessage({
-        id: messageId,
-        conversationId,
-        role: role as 'user' | 'agent' | 'user-ide',
-        content,
-        timestamp,
-      });
-
-      // Auto-clear active desktop execution state when receiving agent responses
-      if (role === 'agent') {
-        setActiveExecutionState(null);
+          try {
+            await activeConnection.start();
+            console.log('[SignalR] Connected to remote public SignalR Hub successfully!');
+            setIsConnected(true);
+          } catch (fallbackErr) {
+            console.warn('[SignalR] Remote fallback connection also failed. Retrying in 5 seconds...', fallbackErr);
+            setIsConnected(false);
+            if (!isShutDown) {
+              setTimeout(startConnection, 5000);
+            }
+          }
+        } else {
+          setIsConnected(false);
+          if (!isShutDown) {
+            setTimeout(startConnection, 5000);
+          }
+        }
       }
-    });
-
-    // New: agent online/offline status changes
-    connection.on('AgentStatusChanged', (agentId: string, isOnline: boolean) => {
-      setAgentStatusUpdate({ agentId, isOnline });
-    });
-
-    // New: Active agent execution state
-    connection.on('ReceiveAgentExecutionState', (conversationId: string, prompt: string, isActive: boolean) => {
-      console.log('SignalR: ReceiveAgentExecutionState', conversationId, prompt, isActive);
-      setActiveExecutionState(isActive ? { conversationId, prompt, isActive } : null);
-    });
-
-    connection.onclose(() => setIsConnected(false));
-    connection.onreconnecting(() => setIsConnected(false));
-    connection.onreconnected(() => setIsConnected(true));
+    };
 
     startConnection();
 
     return () => {
+      isShutDown = true;
       if (connectionRef.current) {
-        connectionRef.current.stop();
+        connectionRef.current.stop().catch(() => {});
+        connectionRef.current = null;
       }
     };
-  }, [hubUrl]);
+  }, [hubUrl, fallbackHubUrl]);
 
   return {
     isConnected,

@@ -39,6 +39,12 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+// Register shutdown hook to clean up localtunnel background processes
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    AntigravityDaemon.Api.TunnelManager.StopTunnel();
+});
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -181,6 +187,9 @@ try
     Console.WriteLine("🌐 Starting web server on http://0.0.0.0:5117...");
     Console.ResetColor();
     app.Start();
+
+    // Start public internet tunnel via localtunnel for out-of-network companion access
+    AntigravityDaemon.Api.TunnelManager.StartTunnel(5117);
 
     // Automatically open the default system web browser to the dashboard as a 100% reliable failsafe
     try
