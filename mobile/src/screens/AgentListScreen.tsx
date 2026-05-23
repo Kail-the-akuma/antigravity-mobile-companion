@@ -15,8 +15,6 @@ import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
 import { CryptoService } from '../services/crypto';
 import { AgentCard } from '../components/AgentCard';
-import { useSignalR } from '../hooks/useSignalR';
-
 interface Agent {
   id: string;
   name: string;
@@ -31,19 +29,20 @@ interface AgentListScreenProps {
   hostUrl: string;
   onSelectAgent: (agent: Agent) => void;
   onUnpair: () => void;
+  isConnected: boolean;
+  agentStatusUpdate: { agentId: string; isOnline: boolean } | null;
 }
 
 export const AgentListScreen: React.FC<AgentListScreenProps> = ({
   hostUrl,
   onSelectAgent,
   onUnpair,
+  isConnected,
+  agentStatusUpdate,
 }) => {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const hubUrl = `${hostUrl}/hubs/companion`;
-  const { isConnected, agentStatusUpdate } = useSignalR(hubUrl);
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -61,7 +60,7 @@ export const AgentListScreen: React.FC<AgentListScreenProps> = ({
     fetchAgents();
   }, [fetchAgents]);
 
-  // Live agent status updates from SignalR
+  // Live agent status updates from SignalR prop
   useEffect(() => {
     if (!agentStatusUpdate) return;
     setAgents((prev) =>

@@ -1,6 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Net.Http;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AntigravityDaemon.Api
 {
@@ -9,7 +13,7 @@ namespace AntigravityDaemon.Api
         private static Process? _tunnelProcess;
         public static string? PublicTunnelUrl { get; private set; }
 
-        public static void StartTunnel(int port)
+        public static void StartTunnel(int port, IServiceProvider services)
         {
             try
             {
@@ -42,6 +46,9 @@ namespace AntigravityDaemon.Api
                                 Console.ForegroundColor = ConsoleColor.Green;
                                 Console.WriteLine($"🚇 [Tunnel] Public URL generated: {PublicTunnelUrl}");
                                 Console.ResetColor();
+
+                                // Send active push notification to update all registered telemóveis in the background!
+                                SendTunnelUpdatePush(services, PublicTunnelUrl);
                             }
                         }
                     }
@@ -66,6 +73,68 @@ namespace AntigravityDaemon.Api
                 Console.WriteLine($"🚇 [Tunnel] Failed to start tunnel process: {ex.Message}");
                 Console.ResetColor();
             }
+        }
+
+        private static void SendTunnelUpdatePush(IServiceProvider services, string newUrl)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Delay slightly to let the Kestrel webserver settle
+                    await Task.Delay(1500);
+
+                    using (var scope = services.CreateScope())
+                    {
+                        var db = scope.ServiceProvider.GetRequiredService<AntigravityDaemon.Data.DaemonDbContext>();
+                        var pushTokens = db.TrustedDevices
+                            .Where(d => d.PushToken != null && d.PushToken != "")
+                            .Select(d => d.PushToken)
+                            .ToList();
+
+                        if (pushTokens.Any())
+                        {
+                            var clientFactory = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>();
+                            var client = clientFactory.CreateClient();
+                            var payloadList = pushTokens.Select(token => new
+                            {
+                                to = token,
+                                sound = "default",
+                                title = "⚡ Antigravity - Ligação Atualizada",
+                                body = "O terminal Antigravity foi reiniciado e o túnel seguro foi atualizado.",
+                                data = new
+                                {
+                                    type = "TunnelUrlUpdate",
+                                    tunnelUrl = newUrl
+                                }
+                            }).ToList();
+
+                            var json = System.Text.Json.JsonSerializer.Serialize(payloadList);
+                            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                            var response = await client.PostAsync("https://exp.host/--/api/v2/push/send", content);
+                            
+                            if (response.IsSuccessStatusCode)
+                            {
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"🚇 [Tunnel Push] Dynamic URL update notification successfully sent to {pushTokens.Count} companion device(s) via Expo!");
+                                Console.ResetColor();
+                            }
+                            else
+                            {
+                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                Console.WriteLine($"🚇 [Tunnel Push] Expo Push Server returned status: {response.StatusCode}");
+                                Console.ResetColor();
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"🚇 [Tunnel Push Error] Failed to send dynamic update push: {ex.Message}");
+                    Console.ResetColor();
+                }
+            });
         }
 
         public static void StopTunnel()

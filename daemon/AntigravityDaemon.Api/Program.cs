@@ -3,7 +3,7 @@ using AntigravityDaemon.Data;
 using AntigravityDaemon.Api.Hubs;
 using AntigravityDaemon.Core.Services;
 using AntigravityDaemon.Api.Services;
-using Photino.NET;
+
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://0.0.0.0:5117");
@@ -189,38 +189,56 @@ try
     app.Start();
 
     // Start public internet tunnel via localtunnel for out-of-network companion access
-    AntigravityDaemon.Api.TunnelManager.StartTunnel(5117);
+    AntigravityDaemon.Api.TunnelManager.StartTunnel(5117, app.Services);
 
-    // Automatically open the default system web browser to the dashboard as a 100% reliable failsafe
+    // Automatically launch the dashboard in native standalone App Mode using Chrome or Edge
     try
     {
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("🌐 Opening dashboard in default system browser: http://127.0.0.1:5117/index.html");
+        Console.ForegroundColor = ConsoleColor.Magenta;
+        Console.WriteLine("🖥️  LAUNCHING DASHBOARD IN STANDALONE APP MODE...");
         Console.ResetColor();
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+
+        // Try launching Google Chrome in dedicated App Mode (borderless, standalone window)
+        var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "http://127.0.0.1:5117/index.html",
-            UseShellExecute = true
-        });
+            FileName = "cmd",
+            Arguments = "/c start chrome --app=http://127.0.0.1:5117/index.html",
+            CreateNoWindow = true,
+            UseShellExecute = false
+        };
+        System.Diagnostics.Process.Start(psi);
     }
-    catch (Exception browserEx)
+    catch
     {
-        // Fallback for environments where UseShellExecute has strict privilege controls
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            // Fallback: Try launching Microsoft Edge in dedicated App Mode
+            var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "cmd",
-                Arguments = "/c start http://127.0.0.1:5117/index.html",
+                Arguments = "/c start msedge --app=http://127.0.0.1:5117/index.html",
                 CreateNoWindow = true,
                 UseShellExecute = false
-            });
+            };
+            System.Diagnostics.Process.Start(psi);
         }
-        catch
+        catch (Exception browserEx)
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"⚠️ Could not open default browser: {browserEx.Message}");
-            Console.ResetColor();
+            // Last resort fallback: Standard default system browser tab
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "http://127.0.0.1:5117/index.html",
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"⚠️ Could not open default browser: {browserEx.Message}");
+                Console.ResetColor();
+            }
         }
     }
 }
@@ -234,39 +252,11 @@ catch (Exception ex)
     return;
 }
 
-// Initialize Photino.NET Window
-try
-{
-    Console.ForegroundColor = ConsoleColor.Magenta;
-    Console.WriteLine("🖥️  LAUNCHING NATIVE DESKTOP DASHBOARD...");
-    Console.ResetColor();
-
-    var window = new PhotinoWindow()
-        .SetTitle("Antigravity Companion - Desktop Control Center")
-        .SetUseOsDefaultSize(false)
-        .SetSize(1200, 800)
-        .Center()
-        .Load("http://127.0.0.1:5117/index.html");
-
-    // Start native GUI message loop (blocks until window is closed)
-    window.WaitForClose();
-
-    Console.ForegroundColor = ConsoleColor.Yellow;
-    Console.WriteLine("🔌 Native GUI window closed. Shutting down daemon backend...");
-    Console.ResetColor();
-
-    // Cleanly stop the web server
-    app.StopAsync().GetAwaiter().GetResult();
-}
-catch (Exception ex)
-{
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine($"⚠️  Failed to launch native GUI window: {ex.Message}");
-    Console.WriteLine("Continuing to run daemon in headless console mode.");
-    Console.ResetColor();
-    
-    // In case Photino fails (e.g. headless environment or missing WebView2), keep the console app running by waiting on the host
-    app.WaitForShutdown();
-}
+// Keep the daemon running in headless console mode, hosting the API and listening for shutdown
+Console.ForegroundColor = ConsoleColor.Green;
+Console.WriteLine("🚀 Antigravity Companion Daemon is active and hosting.");
+Console.WriteLine("Press Ctrl+C inside this terminal window to shut down the server cleanly.");
+Console.ResetColor();
+app.WaitForShutdown();
 
 
