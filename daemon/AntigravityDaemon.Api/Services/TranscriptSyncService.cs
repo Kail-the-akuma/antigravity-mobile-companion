@@ -414,15 +414,65 @@ namespace AntigravityDaemon.Api.Services
                         item.Message.Timestamp.ToString("o")
                     );
 
-                    // If it's a new user prompt from the IDE, broadcast the execution state as active (thinking)
                     if (item.Message.Role == "user-ide")
                     {
+                        // 1. Record PromptSent event
+                        var promptEvent = new CompanionEvent
+                        {
+                            ConversationId = item.ConversationId,
+                            EventType = "PromptSent",
+                            PayloadJson = JsonSerializer.Serialize(new {
+                                id = item.Message.Id,
+                                role = item.Message.Role,
+                                content = item.Message.Content,
+                                timestamp = item.Message.Timestamp
+                            }),
+                            Timestamp = DateTime.UtcNow
+                        };
+                        _context.CompanionEvents.Add(promptEvent);
+                        await _context.SaveChangesAsync();
+                        await _hubContext.Clients.All.SendAsync("ReceiveEvent", promptEvent);
+
+                        // 2. Broadcast and record GenerationStarted event
                         await _hubContext.Clients.All.SendAsync(
                             "ReceiveAgentExecutionState",
                             item.ConversationId.ToString(),
                             item.Message.Content,
                             true
                         );
+
+                        var genEvent = new CompanionEvent
+                        {
+                            ConversationId = item.ConversationId,
+                            EventType = "GenerationStarted",
+                            PayloadJson = JsonSerializer.Serialize(new {
+                                prompt = item.Message.Content,
+                                timestamp = DateTime.UtcNow
+                            }),
+                            Timestamp = DateTime.UtcNow
+                        };
+                        _context.CompanionEvents.Add(genEvent);
+                        await _context.SaveChangesAsync();
+                        await _hubContext.Clients.All.SendAsync("ReceiveEvent", genEvent);
+                    }
+                    else if (item.Message.Role == "agent")
+                    {
+                        // Record AgentFinished event
+                        var finishedEvent = new CompanionEvent
+                        {
+                            ConversationId = item.ConversationId,
+                            EventType = "AgentFinished",
+                            PayloadJson = JsonSerializer.Serialize(new {
+                                id = item.Message.Id,
+                                role = item.Message.Role,
+                                content = item.Message.Content,
+                                timestamp = item.Message.Timestamp
+                            }),
+                            Timestamp = DateTime.UtcNow
+                        };
+                        _context.CompanionEvents.Add(finishedEvent);
+                        await _context.SaveChangesAsync();
+                        await _hubContext.Clients.All.SendAsync("ReceiveEvent", finishedEvent);
                     }
                 }
             }

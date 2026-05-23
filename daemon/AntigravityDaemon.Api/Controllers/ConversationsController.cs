@@ -147,9 +147,25 @@ namespace AntigravityDaemon.Api.Controllers
             };
             _context.ConversationMessages.Add(userMessage);
 
-            // 2. Update conversation timestamp
+            // 2. Record PromptSent event into Event Log
+            var promptEvent = new CompanionEvent
+            {
+                ConversationId = id,
+                EventType = "PromptSent",
+                PayloadJson = System.Text.Json.JsonSerializer.Serialize(new {
+                    id = userMessage.Id,
+                    role = userMessage.Role,
+                    content = userMessage.Content,
+                    timestamp = userMessage.Timestamp
+                }),
+                Timestamp = DateTime.UtcNow
+            };
+            _context.CompanionEvents.Add(promptEvent);
+
+            // 3. Update conversation timestamp
             conversation.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            await _hubContext.Clients.All.SendAsync("ReceiveEvent", promptEvent);
 
             // 3. Process agent response in background
             var agentName = conversation.Agent?.Name ?? "Antigravity";
@@ -216,6 +232,21 @@ namespace AntigravityDaemon.Api.Controllers
                         preCommandLastStepIndex = GetLastStepIndexFromTranscript(remoteId!);
                     }
 
+                    // Record and broadcast GenerationStarted event before launching agent CLI
+                    var genEvent = new CompanionEvent
+                    {
+                        ConversationId = convId,
+                        EventType = "GenerationStarted",
+                        PayloadJson = System.Text.Json.JsonSerializer.Serialize(new {
+                            prompt = request.Content,
+                            timestamp = DateTime.UtcNow
+                        }),
+                        Timestamp = DateTime.UtcNow
+                    };
+                    db.CompanionEvents.Add(genEvent);
+                    await db.SaveChangesAsync();
+                    await hub.Clients.All.SendAsync("ReceiveEvent", genEvent);
+
                     if (isNew)
                     {
                         remoteId = await cliBridge.RunAgentNewConversationAsync(request.Content);
@@ -259,7 +290,7 @@ namespace AntigravityDaemon.Api.Controllers
                         conv.UpdatedAt = DateTime.UtcNow;
                         await db.SaveChangesAsync();
 
-                        // Broadcast via SignalR to update the mobile app
+                        // 1. Broadcast standard message via SignalR to update the mobile app
                         await hub.Clients.All.SendAsync(
                             "ReceiveMessage",
                             convId.ToString(),
@@ -268,6 +299,23 @@ namespace AntigravityDaemon.Api.Controllers
                             agentMessage.Content,
                             agentMessage.Timestamp.ToString("o")
                         );
+
+                        // 2. Record and broadcast AgentFinished event
+                        var finishedEvent = new CompanionEvent
+                        {
+                            ConversationId = convId,
+                            EventType = "AgentFinished",
+                            PayloadJson = System.Text.Json.JsonSerializer.Serialize(new {
+                                id = agentMessage.Id,
+                                role = agentMessage.Role,
+                                content = agentMessage.Content,
+                                timestamp = agentMessage.Timestamp
+                            }),
+                            Timestamp = DateTime.UtcNow
+                        };
+                        db.CompanionEvents.Add(finishedEvent);
+                        await db.SaveChangesAsync();
+                        await hub.Clients.All.SendAsync("ReceiveEvent", finishedEvent);
                     }
                     else
                     {

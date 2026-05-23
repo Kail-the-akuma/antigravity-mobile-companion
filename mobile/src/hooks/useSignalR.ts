@@ -29,6 +29,14 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+export interface CompanionEvent {
+  sequenceId: number;
+  conversationId: string;
+  eventType: string;
+  payloadJson: string;
+  timestamp: string;
+}
+
 export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null = null) => {
   const [isConnected, setIsConnected] = useState(false);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -36,6 +44,7 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
   const [incomingMessage, setIncomingMessage] = useState<ChatMessage | null>(null);
   const [agentStatusUpdate, setAgentStatusUpdate] = useState<{ agentId: string; isOnline: boolean } | null>(null);
   const [activeExecutionState, setActiveExecutionState] = useState<{ conversationId: string; prompt: string; isActive: boolean } | null>(null);
+  const [incomingEvent, setIncomingEvent] = useState<CompanionEvent | null>(null);
   const connectionRef = useRef<signalR.HubConnection | null>(null);
 
   const hubUrlRef = useRef<string | null>(hubUrl);
@@ -115,6 +124,11 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
       connection.on('ReceiveAgentExecutionState', (conversationId: string, prompt: string, isActive: boolean) => {
         console.log('SignalR: ReceiveAgentExecutionState', conversationId, prompt, isActive);
         setActiveExecutionState(isActive ? { conversationId, prompt, isActive } : null);
+      });
+
+      connection.on('ReceiveEvent', (companionEvent: CompanionEvent) => {
+        console.log('[SignalR] ReceiveEvent', companionEvent.sequenceId, companionEvent.eventType);
+        setIncomingEvent(companionEvent);
       });
 
       connection.onclose(() => {
@@ -275,5 +289,7 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
     agentStatusUpdate,
     activeExecutionState,
     setActiveExecutionState,
+    incomingEvent,
+    setIncomingEvent,
   };
 };

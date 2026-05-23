@@ -16,10 +16,15 @@ namespace AntigravityDaemon.Data
         public DbSet<AgentProfile> Agents => Set<AgentProfile>();
         public DbSet<Conversation> Conversations => Set<Conversation>();
         public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
+        public DbSet<CompanionEvent> CompanionEvents => Set<CompanionEvent>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // CompanionEvent constraints
+            modelBuilder.Entity<CompanionEvent>()
+                .HasKey(e => e.SequenceId);
 
             // Configure relation: Task has many Approvals
             modelBuilder.Entity<ApprovalRequest>()

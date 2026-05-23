@@ -95,7 +95,9 @@ function AppContent() {
     setActiveApproval,
     incomingMessage,
     activeExecutionState,
-    agentStatusUpdate
+    agentStatusUpdate,
+    incomingEvent,
+    setIncomingEvent,
   } = useSignalR(hubUrl, fallbackHubUrl);
 
   // Bidirectional self-healing sync of connection URLs (both LAN IP and Remote Tunnel)
@@ -585,6 +587,8 @@ function AppContent() {
           onBack={handleBackToConversations}
           isConnected={isConnected}
           incomingMessage={incomingMessage}
+          incomingEvent={incomingEvent}
+          setIncomingEvent={setIncomingEvent}
           activeExecutionState={activeExecutionState}
           activeApproval={activeApproval}
           setActiveApproval={setActiveApproval}

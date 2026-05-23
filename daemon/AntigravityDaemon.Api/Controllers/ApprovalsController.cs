@@ -84,6 +84,27 @@ namespace AntigravityDaemon.Api.Controllers
             _context.Approvals.Add(approval);
             await _context.SaveChangesAsync();
 
+            if (conversationId.HasValue)
+            {
+                var newEvent = new CompanionEvent
+                {
+                    ConversationId = conversationId.Value,
+                    EventType = "ApprovalRequested",
+                    PayloadJson = JsonSerializer.Serialize(new {
+                        id = approval.Id,
+                        taskId = approval.TaskId,
+                        planStepsJson = approval.PlanStepsJson,
+                        status = approval.Status,
+                        createdAt = approval.CreatedAt,
+                        conversationId = approval.ConversationId?.ToString()
+                    }),
+                    Timestamp = DateTime.UtcNow
+                };
+                _context.CompanionEvents.Add(newEvent);
+                await _context.SaveChangesAsync();
+                await _hubContext.Clients.All.SendAsync("ReceiveEvent", newEvent);
+            }
+
             // Broadcast the approval request to the Mobile Companion App via WebSockets
             await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", approval.Id.ToString(), approval.TaskId.ToString(), approval.PlanStepsJson, conversationId?.ToString());
 
@@ -266,7 +287,36 @@ namespace AntigravityDaemon.Api.Controllers
             approval.Signature = payload.Signature ?? string.Empty;
             approval.UpdatedAt = DateTime.UtcNow;
 
+            if (approval.ConversationId.HasValue)
+            {
+                var newEvent = new CompanionEvent
+                {
+                    ConversationId = approval.ConversationId.Value,
+                    EventType = approval.Status == "Approved" ? "ApprovalApproved" : "ApprovalRejected",
+                    PayloadJson = JsonSerializer.Serialize(new {
+                        id = approval.Id,
+                        taskId = approval.TaskId,
+                        status = approval.Status,
+                        signature = approval.Signature,
+                        updatedAt = approval.UpdatedAt
+                    }),
+                    Timestamp = DateTime.UtcNow
+                };
+                _context.CompanionEvents.Add(newEvent);
+            }
+
             await _context.SaveChangesAsync();
+
+            if (approval.ConversationId.HasValue)
+            {
+                var savedEvent = await _context.CompanionEvents
+                    .OrderByDescending(e => e.SequenceId)
+                    .FirstOrDefaultAsync(e => e.ConversationId == approval.ConversationId.Value);
+                if (savedEvent != null)
+                {
+                    await _hubContext.Clients.All.SendAsync("ReceiveEvent", savedEvent);
+                }
+            }
 
             return Ok(new { message = $"Approval request processed as: {payload.Status}" });
         }

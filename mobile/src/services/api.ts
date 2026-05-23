@@ -211,4 +211,8 @@ export const ApiService = {
   setCreditOverages: async (enableOverages: boolean): Promise<any> => {
     return ApiService.request('/api/models/overages', 'POST', { enableOverages });
   },
+
+  syncEvents: async (conversationId: string, sinceId: number): Promise<any[]> => {
+    return ApiService.request(`/api/events/sync?conversationId=${conversationId}&sinceId=${sinceId}`);
+  },
 };

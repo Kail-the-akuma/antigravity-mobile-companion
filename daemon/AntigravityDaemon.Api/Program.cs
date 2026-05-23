@@ -223,6 +223,7 @@ using (var scope = app.Services.CreateScope())
         bool isDeletedColumnExists = false;
         bool pushTokenColumnExists = false;
         bool conversationIdColumnExists = false;
+        bool companionEventsTableExists = false;
         if (agentsTableExists)
         {
             using (var cmd = conn.CreateCommand())
@@ -256,9 +257,15 @@ using (var scope = app.Services.CreateScope())
                 cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Approvals') WHERE name='ConversationId'";
                 conversationIdColumnExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
             }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='CompanionEvents'";
+                companionEventsTableExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+            }
         }
 
-        schemaUpToDate = agentsTableExists && remoteIdColumnExists && isPinnedColumnExists && isDeletedColumnExists && pushTokenColumnExists && conversationIdColumnExists;
+        schemaUpToDate = agentsTableExists && remoteIdColumnExists && isPinnedColumnExists && isDeletedColumnExists && pushTokenColumnExists && conversationIdColumnExists && companionEventsTableExists;
     }
     catch
     {
