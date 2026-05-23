@@ -29,44 +29,42 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     hour: '2-digit',
     minute: '2-digit',
   });
-
   const isLongMessage = role === 'agent' && content.length > 1200;
   const displayContent = isLongMessage
     ? content.substring(0, 1000) + '...'
     : content;
 
   return (
-    <View style={[styles.row, isUser ? styles.rowUser : styles.rowAgent]}>
-      {/* Agent avatar — only for agent messages */}
-      {!isUser && (
-        <View style={styles.agentAvatar}>
-          <Text style={styles.agentAvatarEmoji}>{agentEmoji}</Text>
-        </View>
-      )}
-
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAgent]}>
-        {role === 'user-ide' && (
-          <View style={styles.ideBadge}>
-            <Text style={styles.ideBadgeText}>💻 ENVIADO DO IDE</Text>
+    <View style={styles.row}>
+      <View style={styles.timelineCard}>
+        <View style={styles.timelineHeader}>
+          <View style={styles.metaLeft}>
+            <Text style={styles.authorBadge}>
+              {role === 'user-ide'
+                ? '💻 IDE COMMAND'
+                : isUser
+                ? '👤 OPERADOR MÓVEL'
+                : `🤖 AGENTE ${agentEmoji}`}
+            </Text>
           </View>
-        )}
-        <Text style={[styles.content, isUser ? styles.contentUser : styles.contentAgent]}>
-          {displayContent}
-        </Text>
+          <Text style={styles.timelineTime}>{formattedTime}</Text>
+        </View>
 
-        {isLongMessage && (
-          <TouchableOpacity
-            style={styles.expandButton}
-            onPress={() => setModalVisible(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.expandButtonText}>Ler Resposta Completa ↗</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.timelineContentContainer}>
+          <Text selectable style={[styles.content, isUser ? styles.contentUser : styles.contentAgent]}>
+            {displayContent}
+          </Text>
 
-        <Text style={[styles.time, isUser ? styles.timeUser : styles.timeAgent]}>
-          {formattedTime}
-        </Text>
+          {isLongMessage && (
+            <TouchableOpacity
+              style={styles.expandButton}
+              onPress={() => setModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.expandButtonText}>Análise Completa do Plano ↗</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Full Screen Reader Modal for Long Messages */}
@@ -107,97 +105,71 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginVertical: 4,
+    marginVertical: 6,
     paddingHorizontal: 16,
+    width: '100%',
   },
-  rowUser: {
-    justifyContent: 'flex-end',
-  },
-  rowAgent: {
-    justifyContent: 'flex-start',
-  },
-  agentAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: Colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-    marginBottom: 2,
-  },
-  agentAvatarEmoji: {
-    fontSize: 16,
-  },
-  bubble: {
-    maxWidth: '75%',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  bubbleUser: {
-    backgroundColor: Colors.primary,
-    borderBottomRightRadius: 4,
-  },
-  bubbleAgent: {
+  timelineCard: {
+    flex: 1,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderBottomLeftRadius: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  timelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderBottomWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  metaLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  authorBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.primary,
+    letterSpacing: 0.8,
+  },
+  timelineTime: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  timelineContentContainer: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   content: {
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.text,
   },
   contentUser: {
-    color: '#FFFFFF',
+    color: Colors.text,
   },
   contentAgent: {
     color: Colors.text,
   },
-  time: {
-    fontSize: 11,
-    marginTop: 4,
-  },
-  timeUser: {
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'right',
-  },
-  timeAgent: {
-    color: Colors.textMuted,
-  },
-  ideBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  ideBadgeText: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: 'rgba(255, 255, 255, 0.85)',
-    letterSpacing: 0.6,
-  },
   expandButton: {
-    marginTop: 8,
+    marginTop: 10,
     paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(94, 92, 230, 0.12)',
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(94, 92, 230, 0.08)',
+    borderRadius: 6,
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: 'rgba(94, 92, 230, 0.2)',
+    borderColor: 'rgba(94, 92, 230, 0.15)',
   },
   expandButtonText: {
     color: Colors.primary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   modalOverlay: {

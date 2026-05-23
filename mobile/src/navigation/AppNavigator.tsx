@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -62,6 +62,19 @@ export const AppNavigator: React.FC = () => {
     incomingEvent,
     setIncomingEvent,
   } = useSignalR(hubUrl, fallbackHubUrl);
+
+  const [debouncedIsConnected, setDebouncedIsConnected] = useState(isConnected);
+
+  useEffect(() => {
+    if (isConnected) {
+      setDebouncedIsConnected(true);
+    } else {
+      const timer = setTimeout(() => {
+        setDebouncedIsConnected(false);
+      }, 4500); // 4.5 segundos de tolerância contra micro-quedas e blink
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected]);
 
   // Custom session, notifications, connection sync and approval hooks
   const { handleUnpair } = usePairingState({
@@ -150,12 +163,12 @@ export const AppNavigator: React.FC = () => {
   return (
     <View style={styles.container}>
       {screen !== 'pairing' && (
-        <SafeAreaView style={isConnected ? styles.safeConnected : styles.safeDisconnected}>
+        <SafeAreaView style={debouncedIsConnected ? styles.safeConnected : styles.safeDisconnected}>
           <View style={styles.statusBarRow}>
             <View style={styles.statusIndicator}>
-              <View style={[styles.statusDot, isConnected ? styles.dotConnected : styles.dotDisconnected]} />
+              <View style={[styles.statusDot, debouncedIsConnected ? styles.dotConnected : styles.dotDisconnected]} />
               <Text style={styles.statusText}>
-                {isConnected ? 'Ligado ao Daemon' : 'A ligar ao Daemon...'}
+                {debouncedIsConnected ? 'Ligado ao Daemon' : 'A ligar ao Daemon...'}
               </Text>
             </View>
             <TouchableOpacity style={styles.settingsIconBtn} onPress={() => setShowSettingsModal(true)} activeOpacity={0.7}>

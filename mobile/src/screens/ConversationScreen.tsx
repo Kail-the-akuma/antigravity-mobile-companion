@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   Text,
   View,
@@ -9,18 +9,13 @@ import {
   Platform,
   KeyboardAvoidingView,
   Keyboard,
-  Modal,
-  ScrollView,
-  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as LocalAuthentication from 'expo-local-authentication';
 import { Colors } from '../theme/colors';
-import { ApiService } from '../services/api';
 import { ChatMessage, ApprovalRequest, CompanionEvent } from '../hooks/useSignalR';
-import { sqliteService } from '../services/sqlite';
 import { MessageBubble } from '../components/MessageBubble';
 import { PlanReviewer } from '../components/PlanReviewer';
+import { useChatEngine } from '../features/session/hooks/useChatEngine';
 import { styles } from './ConversationScreen.styles';
 
 interface Agent {
@@ -44,143 +39,9 @@ interface ConversationScreenProps {
   setActiveApproval: React.Dispatch<React.SetStateAction<ApprovalRequest | null>>;
 }
 
-export interface ChatState {
-  messages: ChatMessage[];
-  activeApproval: ApprovalRequest | null;
-  isThinking: boolean;
-  lastProcessedEventId: number;
-}
-
-export type ChatAction =
-  | { type: 'SET_INITIAL_MESSAGES'; messages: ChatMessage[] }
-  | { type: 'ADD_OPTIMISTIC_MESSAGE'; message: ChatMessage }
-  | { type: 'REMOVE_MESSAGE'; id: string }
-  | { type: 'PROCESS_EVENTS'; events: CompanionEvent[]; conversationId: string }
-  | { type: 'SET_ACTIVE_APPROVAL'; approval: ApprovalRequest | null }
-  | { type: 'SET_THINKING'; isThinking: boolean }
-  | { type: 'RESET_STATE' };
-
-const initialChatState: ChatState = {
-  messages: [],
-  activeApproval: null,
-  isThinking: false,
-  lastProcessedEventId: 0,
-};
-
-function chatReducer(state: ChatState, action: ChatAction): ChatState {
-  switch (action.type) {
-    case 'SET_INITIAL_MESSAGES':
-      return {
-        ...state,
-        messages: action.messages,
-      };
-    case 'ADD_OPTIMISTIC_MESSAGE':
-      return {
-        ...state,
-        messages: [...state.messages, action.message].slice(-6),
-      };
-    case 'REMOVE_MESSAGE':
-      return {
-        ...state,
-        messages: state.messages.filter((m) => m.id !== action.id),
-      };
-    case 'SET_ACTIVE_APPROVAL':
-      return {
-        ...state,
-        activeApproval: action.approval,
-      };
-    case 'SET_THINKING':
-      return {
-        ...state,
-        isThinking: action.isThinking,
-      };
-    case 'PROCESS_EVENTS': {
-      let newState = { ...state };
-      const sortedEvents = [...action.events].sort((a, b) => a.sequenceId - b.sequenceId);
-      let stateChanged = false;
-      let newMessages = [...newState.messages];
-
-      for (const event of sortedEvents) {
-        if (event.conversationId !== action.conversationId) continue;
-        if (event.sequenceId <= newState.lastProcessedEventId) continue;
-
-        stateChanged = true;
-        console.log(`[chatReducer] Applying Event Log: #${event.sequenceId} (${event.eventType})`);
-
-        switch (event.eventType) {
-          case 'AgentStarted':
-            newState.isThinking = true;
-            break;
-          case 'PromptSent':
-            newState.isThinking = true;
-            if (event.payloadJson) {
-              try {
-                const payload = JSON.parse(event.payloadJson);
-                const msgId = payload.Id || payload.id || `prompt-${event.sequenceId}`;
-                if (!newMessages.find((m) => m.id === msgId)) {
-                  newMessages.push({
-                    id: msgId,
-                    conversationId: event.conversationId,
-                    role: 'user',
-                    content: payload.Content || payload.content || '',
-                    timestamp: event.timestamp || new Date().toISOString(),
-                  });
-                }
-              } catch (e) {
-                console.warn('Failed to parse PromptSent payload:', e);
-              }
-            }
-            break;
-          case 'GenerationStarted':
-            newState.isThinking = true;
-            break;
-          case 'ApprovalRequested':
-            if (event.payloadJson) {
-              try {
-                const payload = JSON.parse(event.payloadJson);
-                newState.activeApproval = {
-                  id: payload.Id || payload.id,
-                  taskId: payload.TaskId || payload.taskId || '',
-                  planStepsJson: payload.PlanStepsJson || payload.planStepsJson || '',
-                  status: payload.Status || payload.status || 'Pending',
-                  createdAt: payload.CreatedAt || payload.createdAt || event.timestamp,
-                  conversationId: event.conversationId,
-                };
-              } catch (e) {
-                console.warn('Failed to parse ApprovalRequested payload:', e);
-              }
-            }
-            newState.isThinking = false;
-            break;
-          case 'ApprovalApproved':
-          case 'ApprovalRejected':
-            newState.activeApproval = null;
-            break;
-          case 'AgentPaused':
-          case 'AgentFinished':
-            newState.isThinking = false;
-            break;
-        }
-
-        newState.lastProcessedEventId = event.sequenceId;
-      }
-
-      if (stateChanged) {
-        newState.messages = newMessages.slice(-6);
-      }
-      return newState;
-    }
-    case 'RESET_STATE':
-      return initialChatState;
-    default:
-      return state;
-  }
-}
-
 export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   agent,
   conversationId: initialConversationId,
-  hostUrl,
   onBack,
   isConnected,
   incomingMessage,
@@ -191,23 +52,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   setActiveApproval,
 }) => {
   const insets = useSafeAreaInsets();
-  const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
-  const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const [initializing, setInitializing] = useState(true);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = React.useState(false);
+  const flatListRef = useRef<FlatList>(null);
 
-  const [state, dispatch] = React.useReducer(chatReducer, initialChatState);
-  const { messages, activeApproval: localApproval, isThinking: agentTyping } = state;
-
-  // Implementation Plan states
-  const [hasPlan, setHasPlan] = useState(false);
-  const [planData, setPlanData] = useState<any>(null);
-  const [planVisible, setPlanVisible] = useState(false);
-  const [loadingPlan, setLoadingPlan] = useState(false);
-  const [postingComment, setPostingComment] = useState(false);
-  const [processingApproval, setProcessingApproval] = useState(false);
-
+  // Monitor do teclado para evitar sobreposições e ajustar insets dinâmicos
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
     const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
@@ -217,333 +65,54 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     };
   }, []);
 
-  const flatListRef = useRef<FlatList>(null);
+  // Consome a orquestração isolada de Bounded Context (SRP) via useChatEngine
+  const {
+    conversationId,
+    messages,
+    effectiveApproval,
+    agentTyping,
+    input,
+    setInput,
+    sending,
+    initializing,
+    hasPlan,
+    planData,
+    planVisible,
+    setPlanVisible,
+    loadingPlan,
+    postingComment,
+    processingApproval,
+    handleSend,
+    postPlanComment,
+    handleRespondApproval,
+    checkPlanAvailability,
+  } = useChatEngine({
+    agent,
+    initialConversationId,
+    isConnected,
+    incomingMessage,
+    incomingEvent,
+    setIncomingEvent,
+    activeExecutionState,
+    activeApproval,
+    setActiveApproval,
+  });
 
-  // SignalR states and handlers passed down via props
-
-  const checkPlanAvailability = useCallback(async (showLoading = false) => {
-    if (!conversationId) return;
-    if (showLoading) setLoadingPlan(true);
-    try {
-      const data = await ApiService.getImplementationPlan(conversationId);
-      setPlanData(data);
-      setHasPlan(true);
-    } catch (err) {
-      setHasPlan(false);
-      setPlanData(null);
-    } finally {
-      if (showLoading) setLoadingPlan(false);
-    }
-  }, [conversationId]);
-
-  useEffect(() => {
-    checkPlanAvailability();
-  }, [conversationId, checkPlanAvailability]);
-
-  const loadHistory = useCallback(async (activeId: string) => {
-    try {
-      const existingMessages = await ApiService.getMessages(activeId);
-      const mapped = existingMessages.map((m: any) => ({
-        id: m.id,
-        conversationId: m.conversationId,
-        role: m.role as 'user' | 'agent' | 'user-ide',
-        content: m.content,
-        timestamp: m.timestamp,
-      }));
-      dispatch({ type: 'SET_INITIAL_MESSAGES', messages: mapped.slice(-6) });
-    } catch (err) {
-      console.warn('[ConversationScreen] Error fetching message history:', err);
-    }
-  }, []);
-
-  const syncDeltaEvents = useCallback(async (activeId: string, sinceId: number) => {
-    try {
-      console.log(`[ConversationScreen] Syncing delta events since #${sinceId}...`);
-      const events = await ApiService.syncEvents(activeId, sinceId);
-      if (events && events.length > 0) {
-        console.log(`[ConversationScreen] Received ${events.length} delta events. Processing...`);
-        
-        // 1. Gravar de forma transacional na SQLite local móvel e atualizar lastProcessedEventId
-        const lastId = Math.max(...events.map(e => e.sequenceId));
-        await sqliteService.saveSucceededEvents(events.map(e => ({
-          sequenceId: e.sequenceId,
-          conversationId: e.conversationId,
-          eventType: e.eventType,
-          payloadJson: e.payloadJson,
-          timestamp: e.timestamp
-        })), lastId);
-
-        // 2. Projetar reativamente na UI do telemóvel
-        dispatch({ type: 'PROCESS_EVENTS', events, conversationId: activeId });
-
-        // Update global active approval state if latest delta modified it
-        const lastApprovalEvent = [...events]
-          .reverse()
-          .find(e => e.eventType === 'ApprovalRequested' || e.eventType === 'ApprovalApproved' || e.eventType === 'ApprovalRejected');
-        
-        if (lastApprovalEvent) {
-          if (lastApprovalEvent.eventType === 'ApprovalRequested' && lastApprovalEvent.payloadJson) {
-            const payload = JSON.parse(lastApprovalEvent.payloadJson);
-            setActiveApproval({
-              id: payload.Id || payload.id,
-              taskId: payload.TaskId || payload.taskId || '',
-              planStepsJson: payload.PlanStepsJson || payload.planStepsJson || '',
-              status: payload.Status || payload.status || 'Pending',
-              createdAt: payload.CreatedAt || payload.createdAt || lastApprovalEvent.timestamp,
-              conversationId: activeId,
-              nonce: payload.Nonce || payload.nonce || '',
-              expiresAtUtc: payload.ExpiresAtUtc || payload.expiresAtUtc || ''
-            });
-          } else {
-            setActiveApproval(null);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[ConversationScreen] Error syncing delta events:', err);
-    }
-  }, [setActiveApproval]);
-
-  // Initialize conversation on mount
-  useEffect(() => {
-    const initConversation = async () => {
-      try {
-        let activeId = initialConversationId;
-        if (!activeId) {
-          const conv = await ApiService.createConversation(agent.id, `Conversa com ${agent.name}`);
-          activeId = conv.id;
-          setConversationId(activeId);
-        }
-
-        // 1. Replay de eventos locais a partir do SQLite (Offline-First e Feedback Imediato)
-        console.log(`[ConversationScreen] Replaying local events from SQLite for conversation ${activeId}...`);
-        const localEvents = await sqliteService.getSucceededEvents(activeId!);
-        if (localEvents.length > 0) {
-          const mappedEvents = localEvents.map(e => ({
-            sequenceId: e.sequenceId,
-            conversationId: e.conversationId,
-            eventType: e.eventType,
-            payloadJson: e.payloadJson,
-            timestamp: e.timestamp
-          }));
-          dispatch({ type: 'PROCESS_EVENTS', events: mappedEvents, conversationId: activeId! });
-        }
-
-        // Fetch existing messages if any
-        await loadHistory(activeId!);
-
-        // 2. Sincronizar delta de logs de eventos a partir do cursor persistente local
-        const lastIdStr = await sqliteService.getMetadata('lastProcessedEventId');
-        const sinceId = lastIdStr ? parseInt(lastIdStr, 10) : 0;
-        await syncDeltaEvents(activeId!, sinceId);
-      } catch (err: any) {
-        console.error('Error initializing conversation:', err);
-      } finally {
-        setInitializing(false);
-      }
-    };
-
-    initConversation();
-  }, [agent.id, agent.name, initialConversationId, loadHistory, syncDeltaEvents]);
-
-  // Keep a ref to the latest processed event ID to avoid triggering connection effect loops
-  const lastProcessedIdRef = useRef(state.lastProcessedEventId);
-  useEffect(() => {
-    lastProcessedIdRef.current = state.lastProcessedEventId;
-  }, [state.lastProcessedEventId]);
-
-  // Sync delta events automatically on reconnection (self-healing)
-  useEffect(() => {
-    if (isConnected && conversationId && !initializing) {
-      console.log(`[ConversationScreen] Connection active/restored. Sourcing delta events from sequence #${lastProcessedIdRef.current}...`);
-      syncDeltaEvents(conversationId, lastProcessedIdRef.current);
-    }
-  }, [isConnected, conversationId, initializing, syncDeltaEvents]);
-
-  // Handle real-time incoming events from SignalR
-  useEffect(() => {
-    if (!incomingEvent || !conversationId) return;
-    if (incomingEvent.conversationId !== conversationId) return;
-
-    console.log('[ConversationScreen] Live Event received:', incomingEvent.sequenceId, incomingEvent.eventType);
-    
-    // Grava de forma transacional na SQLite local em tempo real
-    sqliteService.saveSucceededEvents([{
-      sequenceId: incomingEvent.sequenceId,
-      conversationId: incomingEvent.conversationId,
-      eventType: incomingEvent.eventType,
-      payloadJson: incomingEvent.payloadJson,
-      timestamp: incomingEvent.timestamp
-    }], incomingEvent.sequenceId)
-    .catch(e => console.error('[ConversationScreen] Erro ao gravar evento SignalR localmente:', e));
-
-    dispatch({ type: 'PROCESS_EVENTS', events: [incomingEvent], conversationId });
-
-    // Keep global App.tsx activeApproval aligned
-    if (incomingEvent.eventType === 'ApprovalRequested' && incomingEvent.payloadJson) {
-      try {
-        const payload = JSON.parse(incomingEvent.payloadJson);
-        setActiveApproval({
-          id: payload.Id || payload.id,
-          taskId: payload.TaskId || payload.taskId || '',
-          planStepsJson: payload.PlanStepsJson || payload.planStepsJson || '',
-          status: payload.Status || payload.status || 'Pending',
-          createdAt: payload.CreatedAt || payload.createdAt || incomingEvent.timestamp,
-          conversationId: conversationId,
-          nonce: payload.Nonce || payload.nonce || '',
-          expiresAtUtc: payload.ExpiresAtUtc || payload.expiresAtUtc || ''
-        });
-      } catch (e) {
-        console.warn('Failed to parse approval payload for sync:', e);
-      }
-    } else if (incomingEvent.eventType === 'ApprovalApproved' || incomingEvent.eventType === 'ApprovalRejected') {
-      setActiveApproval(null);
-    }
-
-    // Acknowledge event processing and clear it in App.tsx to prevent duplicate processing
-    setIncomingEvent(null);
-  }, [incomingEvent, conversationId, setIncomingEvent, setActiveApproval]);
-
-  // Scroll to bottom when conversation is opened and finished loading
+  // Auto-scroll reativo ao fundo da timeline quando chegam novas mensagens
   useEffect(() => {
     if (!initializing && messages.length > 0) {
       const timer = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
+        flatListRef.current?.scrollToEnd({ animated: true });
       }, 150);
       return () => clearTimeout(timer);
     }
   }, [initializing, messages.length]);
 
-  // Handle real-time messages from SignalR
-  useEffect(() => {
-    if (!incomingMessage || !conversationId) return;
-    if (incomingMessage.conversationId !== conversationId) return;
-
-    dispatch({ type: 'SET_THINKING', isThinking: false });
-    
-    // Evitar duplicados na lista de mensagens
-    if (!messages.find((m) => m.id === incomingMessage.id)) {
-      dispatch({ type: 'ADD_OPTIMISTIC_MESSAGE', message: incomingMessage });
-    }
-
-    // Recheck plan when a message arrives
-    checkPlanAvailability();
-
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [incomingMessage, conversationId, messages, checkPlanAvailability]);
-
-  // Scroll to bottom when desktop agent starts executing
-  useEffect(() => {
-    if (activeExecutionState && activeExecutionState.conversationId === conversationId && activeExecutionState.isActive) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 250);
-    }
-    // Check plan changes when agent execution state updates
-    checkPlanAvailability();
-  }, [activeExecutionState, conversationId, checkPlanAvailability]);
-
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || !conversationId || sending) return;
-
-    const text = input.trim();
-    setInput('');
-    setSending(true);
-
-    // Optimistic update — show user message immediately
-    const optimisticMsg: ChatMessage = {
-      id: `optimistic-${Date.now()}`,
-      conversationId,
-      role: 'user',
-      content: text,
-      timestamp: new Date().toISOString(),
-    };
-    dispatch({ type: 'ADD_OPTIMISTIC_MESSAGE', message: optimisticMsg });
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-
-    try {
-      await ApiService.sendMessage(conversationId, text);
-      dispatch({ type: 'SET_THINKING', isThinking: true }); // Show typing indicator while agent "thinks"
-    } catch (err: any) {
-      console.error('Error sending message:', err);
-      // Remove optimistic message on failure
-      dispatch({ type: 'REMOVE_MESSAGE', id: optimisticMsg.id });
-      setInput(text);
-    } finally {
-      setSending(false);
-    }
-  }, [input, conversationId, sending]);
-
-  const postPlanComment = useCallback(async (section: string, text: string) => {
-    if (!conversationId || postingComment) return;
-    setPostingComment(true);
-    try {
-      await ApiService.postPlanComment(conversationId, section, text);
-      await checkPlanAvailability();
-      Alert.alert('Sucesso', 'Comentário submetido e sincronizado com o computador!');
-    } catch (err: any) {
-      Alert.alert('Erro', `Não foi possível enviar o comentário: ${err.message}`);
-      throw err;
-    } finally {
-      setPostingComment(false);
-    }
-  }, [conversationId, postingComment, checkPlanAvailability]);
-
-  const effectiveApproval = localApproval || activeApproval;
-  const handleRespondApproval = useCallback(async (status: 'Approved' | 'Rejected') => {
-    if (!effectiveApproval || processingApproval) {
-      Alert.alert('Aviso', 'Nenhuma solicitação de aprovação ativa encontrada ou em processamento.');
-      return;
-    }
-    setProcessingApproval(true);
-    try {
-      let signature = 'signed-by-companion-mobile';
-
-      if (status === 'Approved') {
-        const hasHardware = await LocalAuthentication.hasHardwareAsync();
-        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-
-        if (hasHardware && isEnrolled) {
-          const authResult = await LocalAuthentication.authenticateAsync({
-            promptMessage: 'Autentique para assinar e aprovar o plano de execução',
-            fallbackLabel: 'Usar código',
-          });
-
-          if (!authResult.success) {
-            Alert.alert('Autenticação cancelada', 'O plano não foi assinado e a aprovação foi interrompida.');
-            return;
-          }
-          signature = `biometric-signature-approved-${Date.now()}`;
-        }
-      }
-
-      await ApiService.request(`/api/approvals/${effectiveApproval.id}/respond`, 'POST', {
-        status,
-        signature,
-      });
-
-      Alert.alert(
-        status === 'Approved' ? 'Aprovado' : 'Rejeitado',
-        status === 'Approved' 
-          ? 'Plano de alterações assinado e aprovado! O agente irá continuar a trabalhar no computador.'
-          : 'Plano de alterações rejeitado.'
-      );
-
-      dispatch({ type: 'SET_ACTIVE_APPROVAL', approval: null });
-      setActiveApproval(null);
-      setPlanVisible(false);
-      setHasPlan(false);
-      setPlanData(null);
-    } catch (err: any) {
-      Alert.alert('Erro', `Erro ao responder: ${err.message}`);
-    } finally {
-      setProcessingApproval(false);
-    }
-  }, [effectiveApproval, processingApproval, setActiveApproval]);
-
   if (initializing) {
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>A iniciar conversa...</Text>
+        <Text style={styles.loadingText}>A inicializar consola de operações...</Text>
       </View>
     );
   }
@@ -551,7 +120,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, keyboardVisible && { paddingTop: Platform.OS === 'ios' ? 12 : 8, paddingBottom: 8 }]}>
         <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
           <Text style={styles.backArrow}>‹</Text>
         </TouchableOpacity>
@@ -570,8 +139,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         </View>
       </View>
 
-      {/* PLAN NOTIFICATION BANNER: Sitting beautifully below the header and above the FlatList */}
-      {hasPlan && (
+      {/* PLAN NOTIFICATION BANNER */}
+      {hasPlan && !keyboardVisible && (
         <TouchableOpacity
           style={styles.reviewBanner}
           onPress={() => {
@@ -592,10 +161,10 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       {/* Messages & Input Box avoids keyboard */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 102 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 90 : 80}
       >
-        {/* Messages */}
+        {/* Messages List */}
         <FlatList
           ref={flatListRef}
           style={{ flex: 1 }}
@@ -652,7 +221,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           }
         />
 
-        {/* Input */}
+        {/* Input Composer */}
         <View style={[styles.inputContainer, { 
           paddingBottom: keyboardVisible 
             ? 12 
@@ -662,7 +231,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         }]}>
           <TextInput
             style={styles.input}
-            placeholder={`Mensagem para ${agent.name}...`}
+            placeholder="Injetar prompt no runtime do agente..."
             placeholderTextColor={Colors.textMuted}
             value={input}
             onChangeText={setInput}
@@ -686,7 +255,6 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-
 
       <PlanReviewer
         visible={planVisible}

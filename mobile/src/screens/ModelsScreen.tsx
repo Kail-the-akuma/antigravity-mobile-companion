@@ -8,9 +8,9 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
 
@@ -27,6 +27,7 @@ interface ModelsScreenProps {
 }
 
 export const ModelsScreen: React.FC<ModelsScreenProps> = ({ onBack }) => {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [availableCredits, setAvailableCredits] = useState(18);
@@ -103,7 +104,7 @@ export const ModelsScreen: React.FC<ModelsScreenProps> = ({ onBack }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.innerContainer}>
+      <View style={[styles.innerContainer, { paddingTop: Math.max(insets.top, 16) }]}>
         {/* HEADER SECTION */}
         <View style={styles.headerRow}>
           <View style={styles.headerTextGroup}>
@@ -216,7 +217,7 @@ export const ModelsScreen: React.FC<ModelsScreenProps> = ({ onBack }) => {
         </ScrollView>
 
         {/* BACK FOOTER ACTION BUTTON */}
-        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.8}>
+        <TouchableOpacity style={[styles.backButton, { marginBottom: Math.max(insets.bottom, 16) }]} onPress={onBack} activeOpacity={0.8}>
           <Text style={styles.backButtonText}>Voltar às Configurações</Text>
         </TouchableOpacity>
       </View>

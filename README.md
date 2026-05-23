@@ -159,7 +159,22 @@ To prevent network thrashing, the reconnection effect tracks the `lastProcessedE
 
 ---
 
-## 10. Setup Instructions
+## 10. Fase I & Refinamento Mission Control (Evolução Recente)
+
+A **Fase I** e a evolução visual do ecossistema redesenharam o Antigravity Companion de uma aplicação de chat convencional para uma verdadeira **Consola de Operações / Camada de Governação (Mission Control / Governance Layer)** de alta densidade e fiabilidade:
+
+1. **🏛️ Persistência Móvel Nativa (`expo-sqlite`):** Substituição do AsyncStorage por base de dados SQLite nativa transacional (`companion_local.db`), assegurando consistência ACID, replays offline-first rápidos e persistência atómica da fila local de aprovações.
+2. **⏱️ Identificadores Cronológicos (UUID v7):** Adoção do padrão UUID v7 (RFC 9562) para geração de identificadores lexicograficamente ordenados no telemóvel, evitando a fragmentação do índice do SQLite e garantindo integridade de ordenação temporal nativa.
+3. **🔄 Redutor 100% Event-Sourced (Left Fold):** Remoção de todas as mutações imperativas (`SET_THINKING`, `SET_ACTIVE_APPROVAL`). O estado da UI do telemóvel é agora uma projeção matemática puramente reativa e determinística baseada no Event Store imutável.
+4. **📡 Conectividade Debounced (Fim do "Blink"):** Implementação de um debouncer reativo de 4.5 segundos na UI do indicador de rede. Flutuações transientes ou transições rápidas (Wi-Fi para celular) são tratadas em background mantendo a barra de status verde estável.
+5. **📱 Ergonomia Mission Control & Timeline Planar (UI/UX Android):**
+   * **Timeline Planar Reta:** Conversão das bolhas arredondadas de chat numa timeline planar simétrica de 100% de largura útil com metadados estruturados.
+   * **Ocultação de Teclado Reativa:** O banner de plano changeset é ocultado dinamicamente durante digitação ativa no chat, compactando também os paddings do cabeçalho da conversa para libertar espaço vertical sob o teclado.
+   * **Quotas e Modelos Reais:** Sincronização fidedigna com as cotas reais de mercado (Gemini 1.5 Flash/Pro, Claude 3.5 Sonnet, GPT-4o) e ajuste seguro do rodapé contra barras de gestos nativas do Android/iOS.
+
+---
+
+## 11. Setup Instructions
 
 ### Prerequisites
 *   [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
