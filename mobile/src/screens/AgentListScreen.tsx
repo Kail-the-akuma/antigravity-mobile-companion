@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 12 : 56,
+    paddingTop: 12,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderColor: Colors.border,

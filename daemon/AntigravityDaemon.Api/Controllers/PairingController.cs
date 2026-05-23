@@ -50,10 +50,12 @@ namespace AntigravityDaemon.Api.Controllers
         [HttpGet("status")]
         public async Task<IActionResult> GetStatus()
         {
+            bool isDeviceOnline = Hubs.CompanionHub.HasActiveConnections;
             var devices = await _context.TrustedDevices.Select(d => new {
                 id = d.Id,
                 deviceName = d.DeviceName,
-                hasPushToken = !string.IsNullOrEmpty(d.PushToken)
+                hasPushToken = !string.IsNullOrEmpty(d.PushToken),
+                isOnline = isDeviceOnline
             }).ToListAsync();
 
             // Retrieve local network IP
@@ -84,6 +86,13 @@ namespace AntigravityDaemon.Api.Controllers
                 devices = devices,
                 tunnelUrl = AntigravityDaemon.Api.TunnelManager.PublicTunnelUrl
             });
+        }
+
+        // Endpoint to fetch the current process ID safely for startup verification
+        [HttpGet("pid")]
+        public IActionResult GetPid()
+        {
+            return Ok(new { pid = Environment.ProcessId });
         }
 
         // Endpoint to initialize pairing (returns local info to build a QR Code)
@@ -164,6 +173,22 @@ namespace AntigravityDaemon.Api.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Push token registered successfully." });
+        }
+
+        // DELETE: api/pairing/devices/{id} — deletes a trusted device by its ID
+        [HttpDelete("devices/{id}")]
+        public async Task<IActionResult> RemoveDevice(Guid id)
+        {
+            var device = await _context.TrustedDevices.FindAsync(id);
+            if (device == null)
+            {
+                return NotFound("Dispositivo não encontrado.");
+            }
+
+            _context.TrustedDevices.Remove(device);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { success = true, message = "Dispositivo desemparelhado com sucesso." });
         }
     }
 }

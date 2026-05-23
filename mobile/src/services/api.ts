@@ -101,7 +101,7 @@ export const ApiService = {
         url = `${fallbackHostUrl}${endpoint}`;
         
         // Add bypass header for localtunnel
-        headers['bypass-tunnel-reminder'] = 'true';
+        headers['Bypass-Tunnel-Reminder'] = 'true';
         
         // No short timeout on remote tunnel since cellular network might be slower
         response = await fetch(url, {
@@ -141,7 +141,7 @@ export const ApiService = {
       if (fallbackHostUrl) {
         console.log(`[ApiService] getAgents local failed. Trying fallback tunnel: ${fallbackHostUrl}`);
         const response = await fetch(`${fallbackHostUrl}/api/agents`, {
-          headers: { 'bypass-tunnel-reminder': 'true' }
+          headers: { 'Bypass-Tunnel-Reminder': 'true' }
         });
         if (!response.ok) throw new Error('Failed to fetch agents.');
         return response.json();
@@ -202,5 +202,13 @@ export const ApiService = {
       deviceId: identity.deviceId,
       pushToken,
     });
+  },
+
+  getModelsQuota: async (): Promise<any> => {
+    return ApiService.request('/api/models/quota');
+  },
+
+  setCreditOverages: async (enableOverages: boolean): Promise<any> => {
+    return ApiService.request('/api/models/overages', 'POST', { enableOverages });
   },
 };

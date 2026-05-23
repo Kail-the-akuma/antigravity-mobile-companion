@@ -426,12 +426,22 @@
         .device-status-badge {
             font-size: 10px;
             font-weight: 700;
-            color: var(--accent-green);
-            background: rgba(0, 230, 118, 0.08);
-            border: 1px solid rgba(0, 230, 118, 0.2);
             padding: 2px 8px;
             border-radius: 4px;
             text-transform: uppercase;
+        }
+
+        .device-status-badge.connected {
+            color: var(--accent-green);
+            background: rgba(0, 230, 118, 0.08);
+            border: 1px solid rgba(0, 230, 118, 0.25);
+            box-shadow: 0 0 10px rgba(0, 230, 118, 0.1);
+        }
+        
+        .device-status-badge.paired {
+            color: var(--accent-orange);
+            background: rgba(255, 149, 0, 0.08);
+            border: 1px solid rgba(255, 149, 0, 0.25);
         }
 
         /* Path watcher settings */
@@ -728,7 +738,7 @@
                         devItem.className = 'device-item';
                         devItem.innerHTML = `
                             <div class="device-info">
-                                <div class="device-icon-wrapper">
+                                <div class="device-icon-wrapper" style="background: ${dev.isOnline ? 'rgba(0, 230, 118, 0.1)' : 'rgba(255, 149, 0, 0.1)'}; color: ${dev.isOnline ? 'var(--accent-green)' : 'var(--accent-orange)'};">
                                     <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                                         <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
                                         <line x1="12" y1="18" x2="12.01" y2="18"></line>
@@ -739,7 +749,12 @@
                                     <div style="font-size: 11px; color: var(--text-secondary); margin-top: 1px;">ID: ${dev.id.substring(0, 8)}...</div>
                                 </div>
                             </div>
-                            <span class="device-status-badge">CONNECTED</span>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span class="device-status-badge ${dev.isOnline ? 'connected' : 'paired'}">${dev.isOnline ? 'LIGADO' : 'EMPARELHADO'}</span>
+                                <button onclick="unlinkDevice('${dev.id}')" style="background: transparent; border: none; color: #EF4444; font-size: 15px; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1.0)'" title="Remover Emparelhamento">
+                                    🗑️
+                                </button>
+                            </div>
                         `;
                         container.appendChild(devItem);
                     });
@@ -843,13 +858,29 @@
                 .replace(/'/g, "&#039;");
         }
 
+        async function unlinkDevice(deviceId) {
+            if (!confirm("Tem a certeza que deseja remover este dispositivo emparelhado? A ligação criptográfica será anulada.")) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/pairing/devices/${deviceId}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('Falha ao desemparelhar o dispositivo');
+                
+                addLog("warning", `Dispositivo emparelhado removido manualmente: ${deviceId}`);
+                fetchPairingStatus();
+            } catch (err) {
+                addLog("error", `Erro ao desemparelhar: ${err.message}`);
+                alert("Erro: " + err.message);
+            }
+        }
+
         function browseFolder() {
             showToast("Monitored directory managed by desktop agent");
         }
 
         // Startup polling to check active connections and status
         fetchPairingStatus();
-        setInterval(fetchPairingStatus, 15000); // Poll status every 15s to keep dashboard synchronized
+        setInterval(fetchPairingStatus, 5000); // Poll status every 5s to keep dashboard highly synchronized
 
     </script>
 </body>

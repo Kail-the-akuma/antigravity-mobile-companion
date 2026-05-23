@@ -5,14 +5,21 @@ namespace AntigravityDaemon.Api.Hubs
 {
     public class CompanionHub : Hub
     {
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _activeConnections = 
+            new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
+
+        public static bool HasActiveConnections => !_activeConnections.IsEmpty;
+
         public override async Task OnConnectedAsync()
         {
+            _activeConnections.TryAdd(Context.ConnectionId, true);
             await base.OnConnectedAsync();
             System.Console.WriteLine($"Client connected to CompanionHub: {Context.ConnectionId}");
         }
 
         public override async Task OnDisconnectedAsync(System.Exception? exception)
         {
+            _activeConnections.TryRemove(Context.ConnectionId, out _);
             System.Console.WriteLine($"Client disconnected from CompanionHub: {Context.ConnectionId}");
             await base.OnDisconnectedAsync(exception);
         }

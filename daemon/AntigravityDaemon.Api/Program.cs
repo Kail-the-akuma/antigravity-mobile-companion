@@ -3,10 +3,144 @@ using AntigravityDaemon.Data;
 using AntigravityDaemon.Api.Hubs;
 using AntigravityDaemon.Core.Services;
 using AntigravityDaemon.Api.Services;
+using System.Diagnostics;
+using System.Linq;
 
+// Clean up duplicate instances and their localtunnel child processes on startup
+CleanupDuplicateProcesses();
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://0.0.0.0:5117");
+
+static int? GetPidFromRunningInstance()
+{
+    try
+    {
+        using var client = new System.Net.Http.HttpClient();
+        client.Timeout = TimeSpan.FromMilliseconds(500); // Resposta rápida ou desiste
+        var response = client.GetAsync("http://127.0.0.1:5117/api/pairing/pid").GetAwaiter().GetResult();
+        if (response.IsSuccessStatusCode)
+        {
+            var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            // Parsing simples de JSON sem bibliotecas externas
+            var match = System.Text.RegularExpressions.Regex.Match(content, @"""pid""\s*:\s*(\d+)");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int pid))
+            {
+                return pid;
+            }
+        }
+    }
+    catch
+    {
+        // Sem instância ativa ou timeout
+    }
+    return null;
+}
+
+static void CleanupDuplicateProcesses()
+{
+    try
+    {
+        var current = Process.GetCurrentProcess();
+        int currentId = current.Id;
+
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("🔍 [Startup] A procurar processos fantasma ou instâncias duplicadas do Daemon...");
+        Console.ResetColor();
+
+        int? targetPid = null;
+
+        // Método A: Consultar o endpoint HTTP da instância ativa na porta 5117
+        int? activePid = GetPidFromRunningInstance();
+        if (activePid.HasValue && activePid.Value != currentId)
+        {
+            targetPid = activePid.Value;
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"✅ [Startup] Detetada instância ativa via HTTP (PID: {targetPid})");
+            Console.ResetColor();
+        }
+
+        // Método B: Fallback para leitura do ficheiro PID se a porta estiver ocupada mas sem resposta HTTP
+        string pidFilePath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "antigravity_companion.pid");
+        if (!targetPid.HasValue && System.IO.File.Exists(pidFilePath))
+        {
+            try
+            {
+                string content = System.IO.File.ReadAllText(pidFilePath).Trim();
+                if (int.TryParse(content, out int filePid) && filePid != currentId)
+                {
+                    targetPid = filePid;
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine($"🔍 [Startup] Lido PID {targetPid} do ficheiro 'antigravity_companion.pid'");
+                    Console.ResetColor();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Startup] Não foi possível ler o ficheiro PID: {ex.Message}");
+            }
+        }
+
+        // Se identificámos um PID duplicado, terminamos de forma segura e cirúrgica
+        if (targetPid.HasValue)
+        {
+            try
+            {
+                var p = Process.GetProcessById(targetPid.Value);
+                
+                // VERIFICAÇÃO DE SEGURANÇA ESTATUTÁRIA: Garantir que apenas matamos processos do Antigravity
+                // para NUNCA terminar processos de terceiros que possam ter reutilizado o mesmo PID!
+                string name = p.ProcessName.ToLower();
+                bool isOurProcess = name.Contains("dotnet") || 
+                                    name.Contains("antigravitydaemon") || 
+                                    name.Contains("antigravity");
+
+                if (isOurProcess)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"⚠️  [Startup] A terminar instância fantasma/duplicada ({p.ProcessName}, PID: {p.Id}) de forma segura...");
+                    Console.ResetColor();
+
+                    // Termina o processo e a sua árvore de processos (incluindo localtunnel node.exe) de forma nativa e sem privilégios elevados
+                    p.Kill(entireProcessTree: true);
+                    p.Dispose();
+
+                    // Pausa curta para o SO libertar sockets e ficheiros
+                    System.Threading.Thread.Sleep(600);
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"❌ [Startup] Segurança: O processo PID {targetPid} ({p.ProcessName}) não pertence ao Antigravity. Ignorado.");
+                    Console.ResetColor();
+                }
+            }
+            catch (ArgumentException)
+            {
+                // O processo já não está em execução
+                Console.WriteLine($"[Startup] Processo fantasma PID {targetPid} já não se encontra ativo.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Startup] Não foi possível terminar o processo PID {targetPid}: {ex.Message}");
+            }
+        }
+
+        // Escrever o nosso PID atual para o ficheiro para futuras inicializações
+        try
+        {
+            System.IO.File.WriteAllText(pidFilePath, currentId.ToString());
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Startup] Erro ao registar PID em ficheiro: {ex.Message}");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Startup] Erro durante a limpeza de processos: {ex.Message}");
+    }
+}
 
 // Add services to the container.
 builder.Services.AddControllers()

@@ -190,7 +190,7 @@ export const ConversationListScreen: React.FC<ConversationListScreenProps> = ({
             onSelect={onSelectConversation}
             onTogglePin={handleTogglePin}
             onDelete={handleDelete}
-            hasPendingApproval={pendingApprovals ? !!pendingApprovals[item.id] : false}
+            hasPendingApproval={pendingApprovals ? !!pendingApprovals[item.id.toLowerCase()] : false}
           />
         )}
       />

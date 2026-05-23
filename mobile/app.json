@@ -21,12 +21,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "updates": {
-      "url": "https://u.expo.dev/02302d20-3980-4319-806e-8cf4b8e6983d"
-    },
+    "updates": {},
     "extra": {
       "eas": {
-        "projectId": "02302d20-3980-4319-806e-8cf4b8e6983d"
+        "projectId": "f151b975-145e-4222-90c1-0a9f9ae3d60e"
       }
     },
     "plugins": [
@@ -36,6 +34,7 @@
     ],
     "runtimeVersion": {
       "policy": "appVersion"
-    }
+    },
+    "owner": "hfgg"
   }
 }

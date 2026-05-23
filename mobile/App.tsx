@@ -18,6 +18,7 @@ import { AgentListScreen } from './src/screens/AgentListScreen';
 import { ConversationListScreen } from './src/screens/ConversationListScreen';
 import { ConversationScreen } from './src/screens/ConversationScreen';
 import { DeletedConversationsScreen } from './src/screens/DeletedConversationsScreen';
+import { ModelsScreen } from './src/screens/ModelsScreen';
 import { ApiService } from './src/services/api';
 import { CryptoService } from './src/services/crypto';
 import { useSignalR } from './src/hooks/useSignalR';
@@ -45,7 +46,7 @@ interface Agent {
   lastPing: string;
 }
 
-type Screen = 'loading' | 'pairing' | 'agents' | 'conversations' | 'conversation' | 'deleted_conversations';
+type Screen = 'loading' | 'pairing' | 'agents' | 'conversations' | 'conversation' | 'deleted_conversations' | 'models';
 
 function AppContent() {
   const [screen, setScreen] = useState<Screen>('loading');
@@ -219,7 +220,7 @@ function AppContent() {
     const approvalConvId = activeApproval.conversationId;
     if (!approvalConvId) return;
 
-    if (screen === 'conversation' && selectedConversationId === approvalConvId) {
+    if (screen === 'conversation' && selectedConversationId?.toLowerCase() === approvalConvId.toLowerCase()) {
       console.log('Foreground SignalR: matching screen, modal will show automatically.');
     } else {
       console.log('Foreground SignalR: different screen, scheduling local notification and marking list card.');
@@ -229,7 +230,7 @@ function AppContent() {
           title: '⚡ Antigravity - Ação Requerida',
           body: 'O agente gerou um plano de alterações que necessita de revisão.',
           data: {
-            conversationId: approvalConvId,
+            conversationId: approvalConvId.toLowerCase(),
             approvalId: activeApproval.id,
           },
         },
@@ -238,7 +239,7 @@ function AppContent() {
 
       setPendingApprovals(prev => ({
         ...prev,
-        [approvalConvId]: activeApproval
+        [approvalConvId.toLowerCase()]: activeApproval
       }));
     }
   }, [activeApproval, screen, selectedConversationId]);
@@ -293,7 +294,7 @@ function AppContent() {
       if (activeApproval.conversationId) {
         setPendingApprovals(prev => {
           const updated = { ...prev };
-          delete updated[activeApproval.conversationId!];
+          delete updated[activeApproval.conversationId!.toLowerCase()];
           return updated;
         });
       }
@@ -430,7 +431,17 @@ function AppContent() {
               </Text>
             </View>
             <TouchableOpacity style={styles.settingsIconBtn} onPress={() => setShowSettingsModal(true)} activeOpacity={0.7}>
-              <Text style={styles.settingsIconText}>⚙️</Text>
+              <View style={styles.slidersIcon}>
+                <View style={styles.sliderLine}>
+                  <View style={[styles.sliderNode, { top: 1 }]} />
+                </View>
+                <View style={styles.sliderLine}>
+                  <View style={[styles.sliderNode, { top: 9 }]} />
+                </View>
+                <View style={styles.sliderLine}>
+                  <View style={[styles.sliderNode, { top: 5 }]} />
+                </View>
+              </View>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -477,9 +488,12 @@ function AppContent() {
           setActiveApproval={setActiveApproval}
         />
       )}
+      {screen === 'models' && (
+        <ModelsScreen onBack={() => setScreen('agents')} />
+      )}
 
       {/* Cryptographically Protected Global Approval Modal Overlay */}
-      {activeApproval && screen === 'conversation' && selectedConversationId === activeApproval.conversationId && (
+      {activeApproval && screen === 'conversation' && selectedConversationId?.toLowerCase() === activeApproval.conversationId?.toLowerCase() && (
         <Modal transparent animationType="slide" visible={!!activeApproval}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -561,6 +575,14 @@ function AppContent() {
                 style={styles.updateBtn} 
                 onPress={async () => {
                   setCheckingUpdates(true);
+                  if (__DEV__ || !Updates.isEnabled) {
+                    Alert.alert(
+                      'Atualizações Desativadas',
+                      'As atualizações OTA (EAS Update) estão desativadas em ambiente de desenvolvimento ou em builds de testes locais.'
+                    );
+                    setCheckingUpdates(false);
+                    return;
+                  }
                   try {
                     const update = await Updates.checkForUpdateAsync();
                     if (update.isAvailable) {
@@ -594,6 +616,18 @@ function AppContent() {
               </TouchableOpacity>
             </View>
 
+            {/* Models & Quotas Navigation Row */}
+            <TouchableOpacity 
+              style={styles.modelsBtn} 
+              onPress={() => {
+                setShowSettingsModal(false);
+                setScreen('models');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modelsBtnText}>Gerir Modelos & Quotas ⚡</Text>
+            </TouchableOpacity>
+ 
             {/* Unpair Device Section */}
             <TouchableOpacity 
               style={styles.dangerBtn} 
@@ -780,13 +814,33 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   settingsIconBtn: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
-  settingsIconText: {
-    fontSize: 16,
-    color: Colors.text,
+  slidersIcon: {
+    width: 18,
+    height: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sliderLine: {
+    width: 2,
+    height: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderRadius: 1,
+    position: 'relative',
+  },
+  sliderNode: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFF',
+    position: 'absolute',
+    left: -2,
   },
   statusDot: {
     width: 8,
@@ -888,6 +942,20 @@ const styles = StyleSheet.create({
   },
   dangerBtnText: {
     color: Colors.danger,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  modelsBtn: {
+    backgroundColor: 'rgba(94, 92, 230, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(94, 92, 230, 0.2)',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modelsBtnText: {
+    color: Colors.primaryHover,
     fontWeight: '700',
     fontSize: 14,
   },

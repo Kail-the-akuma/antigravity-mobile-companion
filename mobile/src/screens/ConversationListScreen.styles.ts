@@ -10,7 +10,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 16 : 64,
+    paddingTop: 16,
     paddingBottom: 20,
     borderBottomWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.05)',

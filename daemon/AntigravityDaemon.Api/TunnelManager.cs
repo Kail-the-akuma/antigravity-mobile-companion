@@ -24,7 +24,7 @@ namespace AntigravityDaemon.Api
                 var psi = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/c npx localtunnel --port {port}",
+                    Arguments = $"/c npx localtunnel --port {port} --local-host 127.0.0.1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,

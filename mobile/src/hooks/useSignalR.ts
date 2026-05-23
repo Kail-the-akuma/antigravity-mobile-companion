@@ -50,8 +50,9 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
 
       if (isFallback) {
         builder.withUrl(url, {
+          transport: signalR.HttpTransportType.LongPolling,
           headers: {
-            'bypass-tunnel-reminder': 'true'
+            'Bypass-Tunnel-Reminder': 'true'
           }
         });
       } else {

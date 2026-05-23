@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antigravity Biometric Companion Gateway — Arquitetura & Segurança</title>
+    <!-- Import Premium Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Import Mermaid JS for dynamic vector chart rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            securityLevel: 'loose',
+            themeVariables: {
+                background: '#131c2e',
+                primaryColor: '#1e293b',
+                primaryTextColor: '#f3f4f6',
+                lineColor: '#10b981',
+                textColor: '#f3f4f6'
+            }
+        });
+    </script>
+    
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: #131c2e;
+            --card-border: #1e293b;
+            --accent-green: #10b981;
+            --accent-green-glow: rgba(16, 185, 129, 0.15);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --text-dark: #6b7280;
+            --accent-purple: #8b5cf6;
+            --accent-purple-glow: rgba(139, 92, 246, 0.15);
+            --accent-red: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* Premium Header */
+        header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+            padding: 2.5rem;
+            background: linear-gradient(135deg, rgba(19, 28, 46, 0.8) 0%, rgba(11, 15, 25, 0.9) 100%);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.4rem 1rem;
+            background-color: var(--accent-green-glow);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 1.2rem;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.3rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.8rem;
+            background: linear-gradient(to right, #ffffff, #9ca3af);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        /* Intro Section */
+        .intro-text {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin-bottom: 4rem;
+            padding: 0 1.5rem;
+            font-weight: 300;
+            border-left: 3px solid var(--accent-purple);
+            padding-left: 1.5rem;
+        }
+
+        .intro-text strong {
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        /* Sections */
+        section {
+            margin-bottom: 4rem;
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 600;
+            margin-bottom: 1.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            color: #ffffff;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 0.6rem;
+        }
+
+        /* Cards Grid */
+        .grid-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.8rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(139, 92, 246, 0.4);
+        }
+
+        .card-icon {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+
+        .card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-bottom: 0.6rem;
+            color: #ffffff;
+        }
+
+        .card-desc {
+            color: var(--text-muted);
+            font-size: 0.92rem;
+            font-weight: 300;
+        }
+
+        /* Code highlight */
+        .code-snippet {
+            background-color: #080c14;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85rem;
+            color: #38bdf8;
+            margin-top: 0.8rem;
+            overflow-x: auto;
+        }
+
+        /* Flow Diagram Container */
+        .diagram-container {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 2.2rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            margin-bottom: 4rem;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        /* Mermaid container and swipeable layout */
+        .mermaid {
+            background-color: #131c2e;
+            border-radius: 12px;
+            padding: 1.5rem 1rem;
+            display: flex;
+            justify-content: center;
+            margin-top: 1rem;
+            border: 1px solid var(--card-border);
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .mermaid svg {
+            max-width: 100% !important;
+            height: auto !important;
+            color-scheme: dark; /* Force dark rendering / prevent auto-inversion in mobile browsers */
+        }
+
+        /* ==========================================================================
+           CRITICAL OVERRIDES FOR HIGH-CONTRAST DARK MODE ON MERMAID ELEMENTS
+           This forces correct backgrounds, text colors and arrow glow on mobile!
+           ========================================================================== */
+        .mermaid svg g.node rect,
+        .mermaid svg g.node polygon,
+        .mermaid svg g.node circle,
+        .mermaid svg g.node path {
+            fill: #1e293b !important; /* Deep slate node background */
+            stroke: #8b5cf6 !important; /* Elegant purple borders */
+            stroke-width: 2px !important;
+        }
+
+        /* Forces node text color to bright white */
+        .mermaid svg g.node .label,
+        .mermaid svg g.node .label span,
+        .mermaid svg g.node text {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            font-weight: 500 !important;
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+        }
+
+        /* Glowing green connector arrows */
+        .mermaid svg .edgePath .path {
+            stroke: #10b981 !important;
+            stroke-width: 2px !important;
+        }
+
+        .mermaid svg .markerPath {
+            fill: #10b981 !important;
+            stroke: #10b981 !important;
+        }
+
+        /* Glowing yes/no branch labels backgrounds and text */
+        .mermaid svg .edgeLabel rect {
+            fill: #0b0f19 !important;
+            stroke: #1e293b !important;
+        }
+
+        .mermaid svg .edgeLabel span,
+        .mermaid svg .edgeLabel text {
+            color: #10b981 !important;
+            fill: #10b981 !important;
+            font-weight: 600 !important;
+        }
+
+        /* UI/UX Showcase */
+        .ui-showcase {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .ui-item {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 1.2rem;
+        }
+
+        .ui-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dark);
+            font-weight: 600;
+            margin-bottom: 0.6rem;
+        }
+
+        /* Glowing state indicator simulated */
+        .glowing-state {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background-color: rgba(11, 15, 25, 0.4);
+            border: 1px solid var(--card-border);
+            padding: 0.8rem;
+            border-radius: 8px;
+            width: fit-content;
+        }
+
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+            animation: pulse 1.8s infinite;
+        }
+
+        .state-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent-green);
+        }
+
+        /* Quota meter simulated */
+        .sim-quota {
+            background-color: rgba(11, 15, 25, 0.4);
+            border: 1px solid var(--card-border);
+            padding: 0.8rem;
+            border-radius: 8px;
+        }
+
+        .sim-segments {
+            display: flex;
+            gap: 4px;
+            margin-top: 0.4rem;
+        }
+
+        .sim-seg {
+            height: 6px;
+            flex-grow: 1;
+            border-radius: 3px;
+        }
+
+        .sim-seg.active {
+            background-color: var(--text-muted);
+        }
+
+        .sim-seg.inactive {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+
+        /* ==========================================================================
+           RESPONSIVE MOBILE VIEWPORT SETTINGS
+           ========================================================================== */
+        @media (max-width: 600px) {
+            body {
+                padding: 1rem 0.5rem;
+            }
+            
+            header {
+                padding: 1.8rem 1rem !important;
+                margin-bottom: 2rem !important;
+                border-radius: 12px !important;
+            }
+            
+            h1 {
+                font-size: 1.6rem !important;
+            }
+            
+            .subtitle {
+                font-size: 0.95rem !important;
+            }
+            
+            .intro-text {
+                font-size: 0.95rem !important;
+                margin-bottom: 2.5rem !important;
+                padding: 0 0.5rem !important;
+                border-left-width: 2px !important;
+                padding-left: 0.8rem !important;
+                text-align: left !important;
+            }
+            
+            h2 {
+                font-size: 1.3rem !important;
+                margin-bottom: 1.2rem !important;
+            }
+            
+            .ui-showcase {
+                grid-template-columns: 1fr !important;
+                gap: 1rem !important;
+            }
+            
+            .grid-cards {
+                grid-template-columns: 1fr !important;
+                gap: 1rem !important;
+            }
+            
+            .card {
+                padding: 1.3rem !important;
+                border-radius: 12px !important;
+            }
+            
+            .diagram-container {
+                padding: 1.2rem 1rem !important;
+                margin-bottom: 2.5rem !important;
+                border-radius: 12px !important;
+            }
+            
+            /* Responsive Flowchart on Mobile (Vertical TD flow fits perfectly) */
+            .mermaid {
+                padding: 0.8rem !important;
+                border-radius: 8px !important;
+                justify-content: center !important;
+                overflow-x: hidden !important; /* No horizontal scroll needed since TD fits */
+            }
+            
+            .mermaid svg {
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: unset !important;
+                height: auto !important;
+            }
+            
+            /* Dynamic Visual Indicator helper */
+            .diagram-container::after {
+                content: "👇 Fluxo de decisão executado de cima para baixo";
+                display: block;
+                text-align: center;
+                font-size: 0.76rem;
+                color: var(--accent-purple);
+                margin-top: 0.8rem;
+                font-weight: 600;
+            }
+            
+            footer {
+                margin-top: 4rem !important;
+                font-size: 0.78rem !important;
+            }
+        }
+
+        /* Advanced PDF Print layout settings */
+        @media print {
+            body {
+                background-color: #ffffff !important;
+                color: #0f172a !important;
+                padding: 0;
+            }
+            .container {
+                max-width: 100%;
+            }
+            header {
+                background: #f8fafc !important;
+                border: 1px solid #cbd5e1 !important;
+                box-shadow: none !important;
+                page-break-after: avoid;
+            }
+            h1 {
+                background: none !important;
+                -webkit-text-fill-color: #0f172a !important;
+                color: #0f172a !important;
+            }
+            .subtitle {
+                color: #475569 !important;
+            }
+            .card, .diagram-container, .ui-item, .sim-quota, .glowing-state, .mermaid {
+                background-color: #ffffff !important;
+                border: 1px solid #cbd5e1 !important;
+                color: #0f172a !important;
+                box-shadow: none !important;
+                page-break-inside: avoid;
+            }
+            h2, .card-title, .sim-quota span {
+                color: #0f172a !important;
+                border-bottom-color: #cbd5e1 !important;
+            }
+            .card-desc, .step-detail, .intro-text {
+                color: #334155 !important;
+            }
+            .code-snippet {
+                background-color: #f8fafc !important;
+                border: 1px solid #cbd5e1 !important;
+                color: #0369a1 !important;
+            }
+            .mermaid {
+                border: 1px solid #cbd5e1 !important;
+            }
+            footer {
+                color: #94a3b8 !important;
+            }
+        }
+
+        /* Footer styling */
+        footer {
+            text-align: center;
+            margin-top: 6rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--card-border);
+            color: var(--text-dark);
+            font-size: 0.85rem;
+            font-weight: 300;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="badge">MANUAL DE ENGENHARIA & ARQUITETURA</div>
+            <h1>Antigravity Biometric Companion Gateway</h1>
+            <p class="subtitle">O Escudo Criptográfico Remoto para Agentes Autónomos de Inteligência Artificial</p>
+        </header>
+
+        <!-- Intro -->
+        <div class="intro-text">
+            Seja muito bem-vindo ao ecossistema <strong>Antigravity</strong>! Se nunca ouviu falar de nós ou de agentes de IA locais, este documento foi desenhado especialmente para si. Aqui vai descobrir como criámos o primeiro <strong>Escudo de Segurança Biométrica</strong> que permite que uma Inteligência Artificial trabalhe de forma autónoma e segura no seu computador pessoal, sob a sua total supervisão remota.
+        </div>
+
+        <!-- Section 0: Vibe Coding & Remote Power -->
+        <section class="card" style="margin-bottom: 2.5rem; border-left: 4px solid var(--accent-green); background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(19, 28, 46, 0.5) 100%);">
+            <span class="card-icon">📱</span>
+            <h3 class="card-title" style="font-size: 1.4rem;">A Verdadeira Magia: Vibe Coding e Programação Remota</h3>
+            <p class="card-desc" style="font-size: 1.05rem; line-height: 1.7; margin-top: 0.8rem; color: var(--text-main);">
+                A aplicação móvel <strong>Antigravity Companion</strong> não é apenas uma barreira de segurança estática. Ela é, na verdade, um <strong>Painel de Controlo Executivo e Vibe Coding Móvel</strong>!<br><br>
+                Isto significa que pode deitar-se no sofá, apanhar sol na varanda ou estar em qualquer parte do mundo (via túnel seguro SignalR) e continuar a programar de forma extremamente produtiva:<br><br>
+                * <strong>💬 Vibe Coding Remoto</strong>: Envie prompts de programação complexos ("Cria uma página de login em React", "Corrige o bug da base de dados") diretamente do chat do seu telemóvel para o PC remoto.<br>
+                * <strong>👁️ Monitorização de Execução</strong>: Assista, em tempo real, aos ficheiros que a IA está a modificar, aos comandos que está a correr e aos relatórios de progresso do terminal, tudo espelhado no seu ecrã móvel.<br>
+                * <strong>⚡ Gestão Dinâmica de Recursos</strong>: Mude de modelo de linguagem instantaneamente (Gemini, Claude, GPT), controle o orçamento de tokens e adicione créditos para tarefas pesadas com um deslizar de dedo.<br><br>
+                <strong>E onde entra o Escudo Biométrico?</strong> O escudo é o <em>pilar de confiança</em> que torna este Vibe Coding Remoto possível. Como pode delegar tarefas de risco à IA à distância de quilómetros, a app <strong>integra o Escudo Criptográfico</strong>. Se a IA decidir correr um comando sensível para testar a sua aplicação, ela não o fará sem o seu toque físico digital TouchID/FaceID no telemóvel, dando-lhe soberania total e paz de espírito onde quer que esteja!
+            </p>
+        </section>
+
+        <!-- Concept Card (For Newcomers) -->
+        <section class="card" style="margin-bottom: 4rem; border-left: 4px solid var(--accent-purple); background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(19, 28, 46, 0.5) 100%);">
+            <span class="card-icon">💡</span>
+            <h3 class="card-title" style="font-size: 1.4rem;">O Conceito Simples: O que é o Antigravity e porque precisa de um Escudo?</h3>
+            <p class="card-desc" style="font-size: 1.05rem; line-height: 1.7; margin-top: 0.8rem; color: var(--text-main);">
+                Diferente de um Chatbot comum (como o ChatGPT na web), o <strong>Antigravity</strong> é um <strong>Agente de IA Autónomo</strong>. Isto significa que ele tem a capacidade de programar por si, abrir ficheiros no seu PC, criar novos projetos e correr comandos diretamente no seu terminal (linha de comandos).<br><br>
+                <strong>O Risco (Excessive Agency):</strong> Como a IA é extremamente rápida, deixá-la correr comandos no terminal sem supervisão é perigoso. Ela poderia cometer um erro catastrófico (ex: apagar uma pasta importante ou ler chaves privadas).<br><br>
+                <strong>A Solução:</strong> O <strong>Companion Gateway</strong> liga o seu computador ao seu telemóvel, transformando o seu dispositivo numa ponte de controle de fluxo e segurança ativa.
+            </p>
+        </section>
+
+        <!-- Section 1: UX/UI -->
+        <section>
+            <h2>🎨 Elegância Visual & Feedback Inteligente</h2>
+            <p class="card-desc" style="margin-bottom: 2rem;">A experiência de utilização foi construída para dar controlo total num ápice, utilizando indicadores de luz dinâmicos e designs minimalistas:</p>
+            <div class="ui-showcase">
+                <div class="ui-item">
+                    <div class="ui-label">Para o Utilizador (Interface Intuitiva)</div>
+                    <div class="glowing-state" style="margin-bottom: 1rem;">
+                        <div class="pulse-dot"></div>
+                        <div class="state-text">LIGADO AO DAEMON</div>
+                    </div>
+                    <p class="card-desc">Uma luz verde-neon que pulsa no topo do telemóvel garante, num único olhar, que a ligação entre o telemóvel e o PC está ativa e que o canal criptográfico está de pé.</p>
+                </div>
+                <div class="ui-item">
+                    <div class="ui-label">Debaixo do Capô (Métrica de Consumo)</div>
+                    <div class="sim-quota" style="margin-bottom: 1rem;">
+                        <span style="font-size: 0.85rem; font-weight: 600; color: #ffffff;">Gemini 1.5 Pro</span>
+                        <div class="sim-segments">
+                            <div class="sim-seg active"></div>
+                            <div class="sim-seg active"></div>
+                            <div class="sim-seg active"></div>
+                            <div class="sim-seg inactive"></div>
+                            <div class="sim-seg inactive"></div>
+                        </div>
+                    </div>
+                    <p class="card-desc">Visualizador HSL de 5 segmentos para quotas dos modelos de IA. Isto ajuda o utilizador a acompanhar em tempo real o gasto de tokens e a ligar/desligar quotas extras de emergência com transições suaves.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Flow Diagram (Dynamically Rendered by Mermaid.js in Horizontal Layout) -->
+        <section class="diagram-container">
+            <h2>🔄 O Pipeline de Execução Híbrido</h2>
+            <p class="card-desc" style="margin-bottom: 1.5rem;">Eis o fluxo exato de decisão. Quando o agente propõe uma ação sensível, o script guarda-costas <strong>safe_run.py</strong> no computador intercepta o pedido e avalia qual a melhor rota de segurança a seguir:</p>
+            
+            <div class="mermaid">
+                graph TD
+                    A["🤖 Agente inicia Ação de Risco"] --> B["⚡ safe_run.py interceta no PC"]
+                    B --> C{"O C# Daemon está Online?"}
+                    
+                    C -- "SIM (Companion Soberano)" --> D["💾 Regista pedido Pending na SQLite"]
+                    D --> E["📡 SignalR transmite via Túnel Seguro"]
+                    E --> F["📱 App Companion solicita biometria"]
+                    
+                    F --> G{"TouchID / FaceID"}
+                    G -- "Aprovado" --> H["🔑 Assina com HMAC-SHA256 Chave"]
+                    H --> I["✅ Daemon valida e executa no terminal"]
+                    G -- "Rejeitado" --> J["❌ Aborta comando no PC"]
+                    
+                    C -- "NÃO (Fallback de Emergência)" --> K["🔌 Wrapper sai com código especial 99"]
+                    K --> L["💻 IDE Antigravity assume segurança no PC"]
+
+                    classDef defaultNode fill:#1e293b,stroke:#8b5cf6,stroke-width:2px,color:#ffffff;
+                    classDef diamondNode fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#ffffff;
+                    classDef successNode fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff;
+                    classDef failureNode fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#ffffff;
+
+                    class A,B,D,E,F,H,K,L defaultNode;
+                    class C,G diamondNode;
+                    class I successNode;
+                    class J failureNode;
+            </div>
+        </section>
+
+        <!-- Section 3: Pillars of Security -->
+        <section>
+            <h2>🔒 Os Pilares Técnicos do Escudo de Segurança</h2>
+            <p class="card-desc" style="margin-bottom: 2rem;">Não nos limitamos a enviar um sinal de "OK" pela rede. A infraestrutura de segurança do Antigravity assenta em três pilares criptográficos de nível corporativo:</p>
+            
+            <div class="grid-cards">
+                <div class="card">
+                    <span class="card-icon">🔑</span>
+                    <h3 class="card-title">Assinaturas Criptográficas HMAC</h3>
+                    <p class="card-desc">
+                        <strong>Para Todos:</strong> O telemóvel não envia apenas um sinal simples. Ele assina digitalmente a transação com um segredo matemático guardado no hardware do seu telefone. Ninguém consegue copiar ou fingir a sua aprovação.<br><br>
+                        <strong>Engenharia:</strong> Ao autenticar com TouchID, a app React Native aciona um segredo partilhado de 256 bits para gerar um código HMAC-SHA256 anexado ao ID da transação. O Daemon Kestrel C# recalcula-o localmente e valida a correspondência antes de libertar a execução.
+                    </p>
+                    <div class="code-snippet">
+[Cryptographic Handshake Match]
+- Phone Signature: fabf527eea177f0f1a33...
+- Server Recomputed: fabf527eea177f0f1a33...
+- Validation: ✅ MATCH (Liberando Processo)
+                    </div>
+                </div>
+                <div class="card">
+                    <span class="card-icon">🔌</span>
+                    <h3 class="card-title">O Algoritmo de Saída 99 (Fallback)</h3>
+                    <p class="card-desc">
+                        <strong>Para Todos:</strong> E se o servidor do telemóvel (Daemon) falhar ou estiver desligado? O PC fica desprotegido? Não. A IA nunca ganha rédea solta. A segurança reverte imediatamente para o monitor físico do seu computador.<br><br>
+                        <strong>Engenharia:</strong> O wrapper <code>safe_run.py</code> deteta de imediato a ausência de resposta da porta <code>5117</code> (Kestrel API) e termina o processo com o código de saída especial <code>99</code>. O IDE Antigravity local captura esta saída e exibe o prompt tradicional de segurança no ecrã principal do PC.
+                    </p>
+                </div>
+                <div class="card">
+                    <span class="card-icon">💾</span>
+                    <h3 class="card-title">Aprovação Tardia (SQLite Queue)</h3>
+                    <p class="card-desc">
+                        <strong>Para Todos:</strong> Imagine que está no comboio, sem rede no telemóvel, e a IA propõe correr um comando no PC de casa. O pedido não se perde nem bloqueia. Fica guardado em segurança, esperando que volte a ter ligação.<br><br>
+                        <strong>Engenharia:</strong> O pedido é inserido com transação atómica ACID como <code>Pending</code> numa base de dados SQLite local no computador. No segundo em que liga a app móvel ao Daemon, a app sincroniza as aprovações pendentes e apresenta-as imediatamente em fila.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 4: Engineering Resolutions -->
+        <section>
+            <h2>🛠️ Os Grandes Desafios de Engenharia que Superámos</h2>
+            <p class="card-desc" style="margin-bottom: 2rem;">Desenvolver um ecossistema distribuído de alta segurança entre aplicações nativas React Native, scripts em Python e servidores assíncronos C# trouxe-nos desafios complexos de integração:</p>
+            <div class="grid-cards">
+                <div class="card" style="padding: 1.5rem;">
+                    <h3 class="card-title" style="font-size: 1.05rem;">1. Desafio da Ligação Externa (4G/5G Proxy Bypass)</h3>
+                    <p class="card-desc" style="line-height: 1.6; margin-top: 0.6rem;">
+                        <strong>O Problema:</strong> Ao tentar conectar o telemóvel ao PC fora de casa (dados móveis 4G/5G), as operadoras móveis e os proxies intermédios de rede dropavam as ligações WebSockets de segundo a segundo, quebrando a comunicação em tempo real.<br><br>
+                        <strong>A Engenharia:</strong> Forçámos o cliente SignalR no React Native a fazer fallback automático para o transporte <strong>LongPolling</strong> em conexões externas e embutimos cabeçalhos estritos de bypass nas opções de handshake HTTP (como o cabeçalho <code>X-Localtunnel-Bypass-Tunnel: true</code>). Isto estabilizou a ligação remota de forma vitalícia!
+                    </p>
+                </div>
+                <div class="card" style="padding: 1.5rem;">
+                    <h3 class="card-title" style="font-size: 1.05rem;">2. Desafio da Sincronização de Chaves (Casing de UUIDs)</h3>
+                    <p class="card-desc" style="line-height: 1.6; margin-top: 0.6rem;">
+                        <strong>O Problema:</strong> Os geradores de IDs universais (UUIDs) do React Native geram chaves em minúsculas (ex: <code>abcd-123...</code>), enquanto que a base de dados SQLite e o sistema operacional geram chaves que muitas vezes são mapeadas em maiúsculas pelo C#. Uma minúscula diferente causava uma quebra na validação HMAC e abortava o comando.<br><br>
+                        <strong>A Engenharia:</strong> Desenhámos um normalizador de strings insensível a maiúsculas (Case-Insensitive Normalizer) na biblioteca C# e forçámos conversões estritas de <code>.toLowerCase()</code> em todas as pontas do handshake (BD SQLite do PC, App JS e Daemon C#), eliminando falhas falsas-positivas de segurança.
+                    </p>
+                </div>
+                <div class="card" style="padding: 1.5rem;">
+                    <h3 class="card-title" style="font-size: 1.05rem;">3. Desafio da Desassociação Atómica (Revogação Rest)</h3>
+                    <p class="card-desc" style="line-height: 1.6; margin-top: 0.6rem;">
+                        <strong>O Problema:</strong> Se um utilizador perdesse ou decidisse desemparelhar um telemóvel antigo, as chaves criptográficas órfãs continuavam na base de dados, expondo uma potencial brecha física caso o dispositivo fosse acedido.<br><br>
+                        <strong>A Engenharia:</strong> Implementámos uma rota REST atómica altamente segura (<code>DELETE /api/pairing/devices/{id}</code>) acoplada a gatilhos em tempo real no SignalR. No segundo em que remove o dispositivo do painel web minimalista do PC, todas as sessões e segredos associados a esse ID são fisicamente apagados da SQLite, invalidando qualquer assinatura instantaneamente.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            Antigravity Biometric Companion Gateway © 2026. Documentação Técnica de Engenharia de Software para Colaboradores e Utilizadores.
+        </footer>
+
+    </div>
+
+</body>
+</html>
