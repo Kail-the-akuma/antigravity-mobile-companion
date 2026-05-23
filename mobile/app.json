@@ -33,6 +33,9 @@
       "expo-secure-store",
       "expo-notifications",
       "expo-updates"
-    ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }

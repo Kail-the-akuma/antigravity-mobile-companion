@@ -250,9 +250,8 @@ try
         .SetUseOsDefaultSize(false)
         .SetSize(1200, 800)
         .Center()
-        .SetBrowserControlInitParameters("--disable-gpu --disable-gpu-compositing --disable-gpu-rasterization --use-software-rasterizer")
         .SetTemporaryFilesPath(tempPath)
-        .Load("http://127.0.0.1:5117/index.html");
+        .Load("http://localhost:5117/index.html");
 
     // Start native GUI message loop (blocks until window is closed)
     window.WaitForClose();
