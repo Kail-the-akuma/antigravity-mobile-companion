@@ -101,6 +101,22 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     checkPlanAvailability();
   }, [conversationId, checkPlanAvailability]);
 
+  const loadHistory = useCallback(async (activeId: string) => {
+    try {
+      const existingMessages = await ApiService.getMessages(activeId);
+      const mapped = existingMessages.map((m: any) => ({
+        id: m.id,
+        conversationId: m.conversationId,
+        role: m.role as 'user' | 'agent' | 'user-ide',
+        content: m.content,
+        timestamp: m.timestamp,
+      }));
+      setMessages(mapped.slice(-6));
+    } catch (err) {
+      console.warn('[ConversationScreen] Error fetching message history:', err);
+    }
+  }, []);
+
   // Initialize conversation on mount
   useEffect(() => {
     const initConversation = async () => {
@@ -113,15 +129,7 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
         }
 
         // Fetch existing messages if any
-        const existingMessages = await ApiService.getMessages(activeId!);
-        const mapped = existingMessages.map((m: any) => ({
-          id: m.id,
-          conversationId: m.conversationId,
-          role: m.role as 'user' | 'agent' | 'user-ide',
-          content: m.content,
-          timestamp: m.timestamp,
-        }));
-        setMessages(mapped.slice(-6));
+        await loadHistory(activeId!);
       } catch (err: any) {
         console.error('Error initializing conversation:', err);
       } finally {
@@ -130,7 +138,15 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     };
 
     initConversation();
-  }, [agent.id, agent.name, initialConversationId]);
+  }, [agent.id, agent.name, initialConversationId, loadHistory]);
+
+  // Re-fetch message history automatically when connection becomes active (self-healing/reconnect)
+  useEffect(() => {
+    if (isConnected && conversationId) {
+      console.log('[ConversationScreen] Connection active/restored. Sourcing latest message history...');
+      loadHistory(conversationId);
+    }
+  }, [isConnected, conversationId, loadHistory]);
 
   // Scroll to bottom when conversation is opened and finished loading
   useEffect(() => {
