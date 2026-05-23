@@ -315,13 +315,19 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     initConversation();
   }, [agent.id, agent.name, initialConversationId, loadHistory, syncDeltaEvents]);
 
+  // Keep a ref to the latest processed event ID to avoid triggering connection effect loops
+  const lastProcessedIdRef = useRef(state.lastProcessedEventId);
+  useEffect(() => {
+    lastProcessedIdRef.current = state.lastProcessedEventId;
+  }, [state.lastProcessedEventId]);
+
   // Sync delta events automatically on reconnection (self-healing)
   useEffect(() => {
     if (isConnected && conversationId && !initializing) {
-      console.log(`[ConversationScreen] Connection active/restored. Sourcing delta events from sequence #${state.lastProcessedEventId}...`);
-      syncDeltaEvents(conversationId, state.lastProcessedEventId);
+      console.log(`[ConversationScreen] Connection active/restored. Sourcing delta events from sequence #${lastProcessedIdRef.current}...`);
+      syncDeltaEvents(conversationId, lastProcessedIdRef.current);
     }
-  }, [isConnected, conversationId, initializing, state.lastProcessedEventId, syncDeltaEvents]);
+  }, [isConnected, conversationId, initializing, syncDeltaEvents]);
 
   // Handle real-time incoming events from SignalR
   useEffect(() => {

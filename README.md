@@ -1,148 +1,254 @@
-# 🛡️ Antigravity Biometric Companion Gateway
-### *Controlo Remoto Soberano, Vibe Coding Móvel e Segurança Criptográfica para Agentes de IA* 📱⚡
-
-[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Kail-the-akuma/antigravity-mobile-companion/pulls)
-[![.NET Core](https://img.shields.io/badge/.NET-8.0-purple.svg)](https://dotnet.microsoft.com/download)
-[![Expo React Native](https://img.shields.io/badge/React%20Native-Expo-blue.svg)](https://expo.dev/)
-
-**Antigravity Companion** é um **Painel de Controlo Executivo e Cockpit de Vibe Coding Remoto** que liga o teu computador pessoal ao teu telemóvel. Ele permite monitorizar, gerir recursos e aprovar com segurança a execução de tarefas críticas do teu agente de IA autónomo Antigravity, mesmo quando estás longe de casa (via redes móveis 4G/5G).
+# Antigravity Biometric Companion Gateway
+### *Secure Remote Supervision & Cryptographic Human-in-the-Loop Gateway for Autonomous Coding Agents*
 
 ---
 
-## 📖 Índice
-* [💡 O Conceito: Para Todos](#-o-conceito-para-todos)
-* [⚙️ O Pipeline de Decisão: Debaixo do Capô](#%EF%B8%8F-o-pipeline-de-decisão-debaixo-do-capô)
-* [🎨 Elegância Visual e Feedback em Tempo Real](#-elegância-visual-e-feedback-em-tempo-real)
-* [🔒 Pilares Fundamentais de Segurança](#-pilares-fundamentais-de-segurança)
-* [🛠️ Requisitos e Configuração Rápida](#%EF%B8%8F-requisitos-e-configuração-rápida)
-* [⚡ Desafios Técnicos Resolvidos](#-desafios-técnicos-resolvidos)
-* [📄 Licença](#-licença)
+[![Licença](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Build Status](https://img.shields.io/badge/.NET-8.0-blue)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![Framework](https://img.shields.io/badge/React%20Native-Expo-lightgrey)](https://reactnative.dev/)
+[![Security](https://img.shields.io/badge/auth-HMAC--SHA256%20%2B%20Biometrics-red)](https://en.wikipedia.org/wiki/HMAC)
+
+## 1. Overview
+The **Antigravity Biometric Companion Gateway** is a secure, low-latency, mobile-first orchestration gateway designed to solve the critical "human-in-the-loop" problem for autonomous AI coding agents. 
+
+When autonomous agents (e.g., executing commands, writing code, editing system configurations) run on a personal computer or local workspace, they frequently execute hazardous operations (such as running shell scripts or executing unverified database migrations). Traditional terminal-bound confirmation prompts force the user to remain tethered to their workstation.
+
+This project bridges that gap by decoupling execution from approval. By combining a lightweight background daemon, a mobile companion app, and cryptographically signed biometric handshakes, **Antigravity** allows you to safely supervise, review, and authorize agent actions remotely over secure tunnels or local networks.
 
 ---
 
-## 💡 O Conceito: Para Todos
+## 2. The Problem: Why Autonomous Agents Need Supervision
+Autonomous AI coding agents are highly productive, but they lack operational boundaries and contextual risk awareness. 
 
-Diferente dos assistentes de chat tradicionais (como o ChatGPT), o **Antigravity** é um **Agente Autónomo**. Isto significa que ele programa de forma independente, edita ficheiros locais no teu PC, cria projetos e executa comandos diretamente no terminal. 
+1.  **The Context Blindspot**: An agent might attempt to clean a directory using `rm -rf` or install a vulnerable package without evaluating the security implications.
+2.  **Continuous Supervision Fatigue**: Forcing developers to watch terminal lines scroll past kills the productivity gains of hiring an AI agent.
+3.  **Tethered Friction**: Developers cannot step away from their desk because the agent might halt waiting for local terminal approval.
 
-Para evitar o risco de a IA apagar ficheiros confidenciais ou executar scripts perigosos por engano (problema conhecido como *Excessive Agency*), criámos o **Companion Gateway**:
-
-* **💬 Vibe Coding Remoto:** Envia prompts complexos ("Corrige o bug de concorrência", "Cria um painel React") do chat do telemóvel para o PC remoto e assiste à escrita do código em tempo real.
-* **👁️ Monitorização de Execução:** Vê instantaneamente quais os comandos que a IA está a correr e os ficheiros que está a alterar, diretamente no teu telemóvel.
-* **🛡️ Soberania Biométrica:** Sempre que o agente tenta correr um comando sensível no PC, a execução é congelada e o telemóvel pede a tua **Impressão Digital ou Reconhecimento Facial (TouchID/FaceID)**. Só após a tua validação local é que o PC executa a ação.
-* **⚡ Gestão Dinâmica de Recursos:** Altera de modelo (Gemini, Claude, GPT) instantaneamente e controla o teu orçamento de tokens em tempo real.
+**Antigravity** turns your smartphone into a secure, out-of-band executive approval console. The agent runs at full speed until it hits a sensitive boundary. At that point, it pauses, securely streams the changeset and planned commands to your mobile device, and waits for a biometrically verified cryptographic signature.
 
 ---
 
-## ⚙️ O Pipeline de Decisão: Debaixo do Capô
+## 3. Core Architecture
+The system is architected as a decoupled, zero-trust gateway split into three primary entities:
 
-Abaixo está o fluxo híbrido autocompensador e encriptado que acontece no ecossistema sempre que uma instrução é executada:
+```
+[ Local IDE / AI Agent ]  <--->  [ C# Daemon API ]  <=== (SignalR / localtunnel) ===>  [ React Native Mobile Companion ]
+                                       |
+                              [ SQLite Event Log ]
+```
+
+1.  **The PC Daemon (ASP.NET Core 8)**: Spuns up a local Kestrel web host. It monitors agent logs recursively, intercepts risky shell invocations, queues approvals, and manages cryptographic keys for registered devices.
+2.  **The Mobile Companion (React Native + Expo)**: A pure presentation and approval layer structured around Domain-Driven Bounded Contexts. It implements local reducers to process incoming event streams deterministically and triggers biometrics for signing execution payloads.
+3.  **The Cryptographic Pipe**: The communication layer dynamically handles local LAN IP transitions (DHCP lease renewals) and cellular remote networks (via secure reverse tunnels orchestrated on the fly).
+
+---
+
+## 4. Execution Approval Flow
+The gateway enforces a strict, synchronous approval gate. The AI agent cannot execute a marked action without generating a matching cryptographic signature on the mobile device.
 
 ```mermaid
-graph TD
-    A["🤖 Agente inicia Ação de Risco (Ex: Ler ficheiro hosts)"] --> B["⚡ safe_run.py interceta o comando no PC"]
-    B --> C{"O C# Daemon está Ativo?"}
+sequenceDiagram
+    autonumber
+    participant Agent as AI Agent (IDE)
+    participant Daemon as C# Daemon Backend
+    participant DB as SQLite DB
+    participant Mobile as Mobile Companion
     
-    C -- "SIM (Companion Soberano)" --> D["💾 Regista pedido como 'Pending' na SQLite DB"]
-    D --> E["📡 SignalR transmite via Túnel Remoto Encriptado"]
-    E --> F["📱 App Companion vibra e pede Biometria local no telemóvel"]
-    
-    F --> G{Sensor TouchID / FaceID}
-    G -- "Aprovado" --> H["🔑 Assina com HMAC-SHA256 (Chave de 256 bits)"]
-    H --> I["✅ Daemon valida assinatura MATCH e executa no terminal do PC"]
-    G -- "Rejeitado" --> J["❌ Aborta o comando instantaneamente no PC"]
-    
-    C -- "NÃO (Fallback Automático)" --> K["🔌 Wrapper sai com código especial 99"]
-    K --> L["💻 IDE Antigravity assume segurança local e exibe prompt padrão no monitor do PC"]
-
-    classDef defaultNode fill:#1e293b,stroke:#8b5cf6,stroke-width:2px,color:#ffffff;
-    classDef diamondNode fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#ffffff;
-    classDef successNode fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff;
-    classDef failureNode fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#ffffff;
-
-    class A,B,D,E,F,H,K,L defaultNode;
-    class C,G diamondNode;
-    class I successNode;
-    class J failureNode;
+    Agent->>Daemon: Intercept: Request execution (e.g., bash command)
+    Note over Daemon: Execution is paused. Status = Pending
+    Daemon->>DB: Save ApprovalRequest & write Event Log
+    Daemon-->>Mobile: Broadcast "ReceiveEvent" / Push (SignalR)
+    Note over Mobile: UI transitions to Approval Modal automatically
+    Mobile->>Mobile: Request TouchID / FaceID Biometrics
+    Note over Mobile: Crypto KeyStore decrypts private key
+    Mobile->>Mobile: Compute HMAC-SHA256 signature of payload
+    Mobile->>Daemon: POST /api/approvals/{id}/respond (Status, Signature, Nonce)
+    Daemon->>Daemon: Cryptographically verify signature using stored public key
+    alt Signature is Valid
+        Daemon->>DB: Update Approval Status = Approved
+        Daemon->>Agent: Return Approved: Continue local execution
+    else Signature is Invalid / Timeout
+        Daemon->>DB: Update Approval Status = Rejected
+        Daemon->>Agent: Terminate/Halt execution (Fail-Closed)
+    end
 ```
 
 ---
 
-## 🎨 Elegância Visual e Feedback em Tempo Real
+## 5. Security Model
+We operate under a strict **Zero-Trust Network posture**. Because data travels over public reverse-tunnels (`localtunnel`), the intermediate transport layer must be treated as hostile and potentially monitored.
 
-A experiência do utilizador móvel foi desenhada sobre o conceito de **Transparência Estrita**:
-
-* **🟢 Bandeira de Conexão Pulsante:** Um indicador neon verde-brilhante no topo exibe `"LIGADO AO DAEMON"`, garantindo que o canal encriptado de SignalR está ativo.
-* **📊 Cápsulas de Quotas Inteligentes:** O consumo dos LLMs é representado visualmente por **5 blocos horizontais segmentados** que se esvaziam dinamicamente, acompanhados por um sinal de alerta `⚠️` para modelos sem créditos.
-* **🎛️ Comutadores Overages:** Um interruptor animado de transição de vidro na app permite-te autorizar orçamentos extras de tokens temporários com um simples deslizar.
-* **📝 Mirroring de Prompt do IDE:** Quando o utilizador escreve no IDE do PC, a app mostra uma bolha de chat elegante etiquetada como **"💻 ENVIADO DO IDE"** juntamente com um loader pulsante de **"Agente em Execução (Ambiente Remoto)"**.
-
----
-
-## 🔒 Pilares Fundamentais de Segurança
-
-1. **Soberania Biométrica HMAC-SHA256:**
-   A autenticação não envia uma mensagem simples de "Sim". Ela gera uma chave criptográfica assinada com um segredo privado local gerado durante o emparelhamento inicial. O Daemon C# recalcula o HMAC localmente. O terminal do PC só é desbloqueado com um `MATCH` perfeito.
-2. **Mecanismo Fallback Segura (Código 99):**
-   Se o Daemon C# estiver offline, o wrapper `safe_run.py` apanha a falha de socket e encerra com código `99`, forçando o IDE do PC a assumir a segurança local, bloqueando o ecrã até que o utilizador valide no teclado físico.
-3. **Persistência de Fila (SQLite ACID):**
-   Se estiveres sem rede móvel no telemóvel, as aprovações pendentes são empilhadas de forma transacional na SQLite local do PC, surgindo de forma cronológica na app no exato segundo em que recuperares sinal de rede.
+*   **Human Approval Authority**: Cryptographic signatures are generated using public-key cryptography (ECDSA/RSA). Private keys are held strictly in the hardware-backed secure storage of your mobile device (iOS Keychain / Android KeyStore) and decrypted only upon successful biometric authentication (TouchID/FaceID).
+*   **Asymmetric Attestation**: The Daemon registers the device's public key during a secure, local-only pairing handshake (LAN or QR Code). Every execution decision sent by the phone is signed using the matching private key, meaning an attacker intercepting the tunnel cannot forge approval.
+*   **Replay Attack Countermeasures**: All signatures incorporate a high-resolution UTC timestamp (`X-Timestamp`) and an atomic, single-use cryptographic `nonce` (`X-Nonce`). The Daemon rejects any signatures older than 15 seconds or containing a previously used nonce.
+*   **Fail-Closed Architecture**: If the network tunnel is severed, or if the C# Daemon crumbles, the system **degrades safely**. The terminal wrappers fail-closed, blocking the AI agent from silently executing operations.
 
 ---
 
-## 🛠️ Requisitos e Configuração Rápida
+## 6. Mobile Orchestration Capabilities
+The mobile client provides comprehensive executive supervision over your autonomous workflows:
 
-### Requisitos:
-* **PC:** [.NET SDK 8.0](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) instalado.
-* **Telemóvel:** Expo Go instalado (para desenvolvimento) ou builds compilados para Android/iOS.
-* **Node.js:** Versão 18 ou superior.
-
-### 🔌 Passo 1: Inicializar o Daemon Backend (C#)
-1. Navega para a diretoria do Daemon:
-   ```bash
-   cd daemon/AntigravityDaemon.Api
-   ```
-2. Executa o restauro e corre o servidor:
-   ```bash
-   dotnet run
-   ```
-   O Daemon irá inicializar-se no porto `5117` e abrirá automaticamente o painel de emparelhamento. Um código **Pairing Pin** dinâmico e o endereço IP local ser-te-ão mostrados no terminal. O **túnel público seguro do localtunnel** também será inicializado automaticamente na rede externa!
-
-### 📱 Passo 2: Executar a Aplicação Móvel (React Native)
-1. Navega para a diretoria mobile:
-   ```bash
-   cd mobile
-   ```
-2. Instala as dependências:
-   ```bash
-   npm install
-   ```
-3. Corre o servidor de desenvolvimento Expo:
-   ```bash
-   npx expo start
-   ```
-4. Abre a aplicação no teu telemóvel lendo o código QR gerado no terminal com o **Expo Go** (Android) ou câmara nativa (iOS). Insere o IP e o Pin de emparelhamento exibidos pelo Daemon no PC para sincronizar instantaneamente!
+*   **Biometric Sign-off**: Review structural diffs and bash commands. Authorize execution with zero-latency face or fingerprint scanning.
+*   **Real-Time Execution Logs**: Observe running terminal logs and LLM reasoning steps streamed over secure WebSockets in real time.
+*   **Remote Bounded Control**: Manage model quotas, toggle AI credit overages, and monitor real-time credit metrics synced instantly with the Daemon.
+*   **Dynamic Connectivity Handshake**: An integrated bidirectional auto-sync engine instantly repairs connection parameters. If your PC's local IP changes (DHCP renewal) or the tunnel regenerates, the system self-heals as soon as one network path succeeds.
 
 ---
 
-## ⚡ Desafios Técnicos Resolvidos
+## 7. Technical Stack
+We chose these technologies deliberately, prioritizing structural resilience, speed, and low operational overhead:
 
-### 1. Deteção e Auto-Cura de Processos Duplicados (Seguro e Local)
-Para evitar conflitos de porto (`5117` ocupado) ou processos fantasma de `localtunnel` e `node` a correr em segundo plano, implementámos um sistema de **Dupla Verificação de Inicialização** em [Program.cs](daemon/AntigravityDaemon.Api/Program.cs):
-* **HTTP Check:** Faz uma chamada a `/api/pairing/pid` local. Se houver resposta, recolhe o PID exato em execução.
-* **PID File Fallback:** Se a porta estiver presa mas inativa (servidor congelado), lê o PID guardado no ficheiro local `antigravity_companion.pid`.
-* **Whitelist de Processos:** Valida estatutariamente se o nome do processo alvo contém `"dotnet"` ou `"antigravity"` antes de efetuar qualquer terminação. Isto garante **perfeita segurança de utilizador** (UAC), evitando fechar aplicações de terceiros sem necessidade de privilégios elevados.
-* **Árvore Completa:** Executa `p.Kill(entireProcessTree: true)` nativo em .NET para limpar de imediato todos os processos filhos (incluindo o túnel de Node.js).
+### C# Daemon Backend
+*   **ASP.NET Core 8 & Kestrel**: High-performance, lightweight web server. Handles asynchronous file watching and REST routes with minimal CPU footprint.
+*   **SignalR (WebSockets)**: Chosen for its robust, built-in hybrid connection fallbacks. If a corporate firewall blocks persistent WebSockets, SignalR automatically degrades gracefully to HTTP Long Polling, maintaining the stream.
+*   **Entity Framework Core & SQLite**: We chose SQLite because it requires **zero external infrastructure installation** on the developer's machine. It provides ACID-compliant persistence locally in a single file, acting as an immutable append-only Event Store.
 
-### 2. Estabilização do Túnel Persistente (Rede Móvel 4G/5G)
-Operadoras móveis costumam cortar WebSockets persistentes de longa duração devido a firewalls agressivas. 
-* **Resolução:** Configurámos o cliente SignalR móvel com fallback automático para **HTTP LongPolling** sob dados móveis e injetámos cabeçalhos estritos de bypass de proxy (`bypass-tunnel-reminder: true`), permitindo que a conexão permaneça ativa 24/7 de forma rápida e estável.
-
-### 3. Normalização de Timezones e Assinaturas UUID (SQLite Case-Insensitive)
-* **Resolução:** O motor SQLite do Windows tende a lidar com strings de UUIDs em maiúsculas enquanto o JavaScript móvel as gera em minúsculas. Implementámos um normalizador de casing insensível a maiúsculas no middleware do Daemon, eliminando falsos-negativos de "Mismatch de Assinatura" criptográfica. Normalizámos também os registos de timezone para `DateTimeKind.Utc` para evitar duplicações silenciosas induzidas por offsets locais (UTC+1).
+### Mobile Companion App
+*   **React Native & Expo (TypeScript)**: Standard cross-platform visual client. Compile-time safety and fast reload iterations.
+*   **Hardware Biometrics (`expo-local-authentication`)**: Interfaces directly with native FaceID/TouchID secure hardware frameworks.
+*   **Hardware KeyStore (`expo-secure-store`)**: Securely isolates cryptographic device identities and authorization secrets from standard sandbox filesystems.
 
 ---
 
-## 📄 Licença
+## 8. Bounded Contexts Map
 
-Este projeto está licenciado sob a licença MIT - consulte o ficheiro [LICENSE](LICENSE) para obter mais detalhes.
+To ensure strict separation of concerns, high cohesion, and low coupling, both components are architected under clean **Domain-Driven Bounded Contexts**:
+
+### 🖥️ Backend Daemon Bounded Contexts (`/core`)
+*   `core/execution`: Pipeline governing AI commands interception, terminal wrappers, and file watch monitors.
+*   `core/approval`: The cryptographic queue managing biometric validation, public key registries, and execution permissions.
+*   `core/security`: Zero-trust layer checking signatures, timestamp skew validation, and nonce history.
+*   `core/transport`: SignalR WebSockets hubs, Kestrel configuration, and network tunnel interfaces.
+*   `core/pairing`: Secure device handshakes, PIN validation, and key exchange.
+*   `core/monitoring`: Metrics tracking, credits quotas, and immutable audit logs.
+
+### 📱 Mobile Bounded Contexts (`/features`)
+*   `features/approval`: Renders plan changeset diffs, contextual accordions, and fires the biometric signature hook.
+*   `features/session`: Encapsulates application boots, `SecureStore` locks with safety timeouts, and pairing flows.
+*   `features/settings`: Visual configuration screens for remote tunnels and Expo EAS update channels.
+*   `features/monitoring`: Visual rendering of flowing terminal logs and LLM thinking cards.
+
+---
+
+## 9. Runtime Lifecycle
+
+The companion operates under a **Stateless Event-Sourcing (Event Store)** lifecycle. It does not rely on heavy database snapshots or visual state-guessing. It is governed by a purely mathematical timeline of atomic telemetries.
+
+```
+                    [ Cold Boot ]
+                          │
+            Fetch messages from local cache
+                          │
+         Pull Delta REST: GET /api/events/sync?sinceId=0
+                          │
+     ┌───────────────────┴───────────────────┐
+     ▼                                       ▼
+[ SignalR Connected ]              [ SignalR Disconnected ]
+     │                                       │
+Apply live "ReceiveEvent" via Reducer        │
+     │                              Queue offline approvals
+     │                                       │
+     │                              Reconnection (AppState)
+     │                                       │
+     └────────────────◄──────────────────────┘
+            Pull Delta REST: GET /api/events/sync?sinceId=X
+```
+
+### Reconnection Self-Healing (useRef Refinement)
+To prevent network thrashing, the reconnection effect tracks the `lastProcessedEventId` using a React `useRef`. When the cellular network transitions back to active, only **one single REST pull request** is dispatched using the referenced sequence ID. This eliminates duplicate requests, saving mobile data and reducing server overhead.
+
+---
+
+## 10. Setup Instructions
+
+### Prerequisites
+*   [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+*   [Node.js 18+](https://nodejs.org/) (for mobile packaging and tunnel CLI)
+*   [Expo Go](https://expo.dev/client) app installed on your smartphone (or EAS build capabilities)
+
+### 1. Configure the Daemon Backend
+Clone the repository and build the C# backend:
+```bash
+cd daemon
+dotnet restore
+dotnet build
+```
+Start the Kestrel server:
+```bash
+cd AntigravityDaemon.Api
+dotnet run
+```
+The server will boot, write its current Process ID (`antigravity_companion.pid`) for automatic zombie-process cleanup, spin up a secure background localtunnel instance, and open the Control Center in your primary system browser at `http://localhost:5117/index.html`.
+
+### 2. Configure the Mobile Companion
+Install node dependencies inside the mobile directory:
+```bash
+cd ../../mobile
+npm install
+```
+Start the local Expo development server:
+```bash
+npx expo start
+```
+Scan the QR code displayed in the terminal with your smartphone's camera to boot the Companion app instantly over Expo Go.
+
+### 3. Configure the Antigravity Agent Permission Grants
+To authorize the Antigravity CLI core to execute commands through the gateway's security sandbox scripts, you must configure the user's global permission grants. 
+Inside your local agent configuration file (e.g., `config.json` inside the `Antigravity` agent settings directory), ensure the following JSON structure is declared to whitelist the gateway CSRF tokens and the safe execution wrapper (`safe_run.py`) running inside your `HomeSync` workspace:
+
+```json
+{
+  "userSettings": {
+    "globalPermissionGrants": {
+      "allow": [
+        "command($env:ANTIGRAVITY_CSRF_TOKEN=\"a2354dc8-33d8-47b3-bf64-215b501b5006\")",
+        "command(python \"C:\\\\Users\\\\Hugo\\\\Documents\\\\GitHub\\\\HomeSync\\\\safe_run.py\")"
+      ]
+    },
+    "useAiCredits": false
+  }
+}
+```
+
+This whitelists the secure execution shell process directly in the PC agent, allowing the background daemon to intercept, halt, and resume code processes via the biometric companion app seamlessly without triggering local terminal blockades.
+
+---
+
+## 11. Known Limitations & Tradeoffs
+*   **MVP/Research Status**: This project is currently an active MVP. While it is stable and type-safe, it has not undergone formal penetration testing. Do not expose the port `5117` publicly without keeping device signature verification active.
+*   **Reverse Tunnel Dependencies**: We use `localtunnel` for out-of-network access. It may intermittently suffer from rate limits or transient server drops. For enterprise-grade reliability, we recommend configuring a dedicated Cloudflare Tunnel or local VPN.
+*   **SQLite Scale Limits**: SQLite works perfectly for single-developer workstations. It is not designed to handle high-concurrency writes from thousands of parallel enterprise daemons. Do not replace it with an external relational database without adding a Redis write-behind cache layer.
+
+---
+
+## 12. Future Roadmap
+- [ ] **E2EE Channels (End-to-End Encryption)**: Implementing AES-GCM-256 payload encryption so the public tunnel only relays ciphertext (Zero-Knowledge transport).
+- [ ] **Granular Scoped Permissions**: Restricting mobile approvals by directory severity (e.g., auto-approve simple file changes, force biometric prompts only for bash execution).
+- [ ] **Audit Trail Export**: One-click immutable CSV/PDF generation of all signed commands for engineering compliance reviews.
+
+---
+
+## 13. Liability Disclaimer & Safety Warning (AS-IS Warranty)
+
+> [!CAUTION]
+> **CRITICAL SECURITY AND OPERATIONAL DISCLAIMER — PLEASE READ CAREFULLY BEFORE USE**
+
+### A. No Warranties (AS-IS)
+This software is provided as a research prototype and Minimum Viable Product (MVP) "AS IS" without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
+
+### B. High-Risk Autonomous Execution Notice
+AI agents are autonomous and prone to hallucinations, unexpected loops, and hazardous execution behaviors. The gateway attempts to intercept commands based on provided filters, but **there is absolutely no guarantee that every single malicious, destructive, or unwanted operation will be successfully intercepted.** 
+
+### C. Absolute Limitation of Liability
+In no event shall the authors, maintainers, or copyright holders of this project be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software, including but not limited to:
+*   **Data Loss or Corruption**: Accidental file deletion, database wipes, or project codebase corruption initiated by the AI agent.
+*   **Infrastructure Damage**: CPU/GPU overheating, network port exhaustion, or local hardware crashes caused by agent loops.
+*   **Cryptographic & Device Key Failures**: Lost private keys, device desynchronization, or bypasses resulting from compromised host environments.
+*   **Financial & Token Exhaustion**: Unexpected credit card charges, API rate-limit overages, or credit exhaustions on LLM platforms.
+
+By launching this software and pairing your physical mobile device, you explicitly acknowledge and assume all operational risks, accepting sole and absolute responsibility for supervising your autonomous workflows.
+
+---
+
+## 14. License
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.

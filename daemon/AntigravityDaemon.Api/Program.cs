@@ -3,6 +3,7 @@ using AntigravityDaemon.Data;
 using AntigravityDaemon.Api.Hubs;
 using AntigravityDaemon.Core.Services;
 using AntigravityDaemon.Api.Services;
+using AntigravityDaemon.Api.Core.Monitoring.Services;
 using System.Diagnostics;
 using System.Linq;
 
@@ -165,6 +166,7 @@ builder.Services.AddTransient<ILlmService, LlmService>();
 builder.Services.AddSingleton<IAgentCliBridge, AgentCliBridge>();
 builder.Services.AddScoped<ITranscriptSyncService, TranscriptSyncService>();
 builder.Services.AddHostedService<TranscriptWatcherService>();
+builder.Services.AddScoped<IQuotaMonitoringService, QuotaMonitoringService>();
 
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
