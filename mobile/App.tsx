@@ -127,6 +127,10 @@ function AppContent() {
   // EAS Over-The-Air Automatic Updates Hook
   useEffect(() => {
     async function checkAndApplyUpdates() {
+      if (__DEV__) {
+        console.log('Skipping OTA updates check in development mode.');
+        return;
+      }
       if (!Updates.isEnabled) {
         console.log('EAS Updates service is not enabled in this build. Skipping check.');
         return;
@@ -656,6 +660,14 @@ function AppContent() {
                 style={styles.updateBtn} 
                 onPress={async () => {
                   setCheckingUpdates(true);
+                  if (__DEV__) {
+                    Alert.alert(
+                      'Modo de Desenvolvimento',
+                      'As atualizações automáticas OTA não estão disponíveis em modo de desenvolvimento (Metro).'
+                    );
+                    setCheckingUpdates(false);
+                    return;
+                  }
                   if (!Updates.isEnabled) {
                     Alert.alert(
                       'Atualizações Desativadas',
