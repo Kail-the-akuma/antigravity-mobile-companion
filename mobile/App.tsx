@@ -98,31 +98,79 @@ function AppContent() {
     agentStatusUpdate
   } = useSignalR(hubUrl, fallbackHubUrl);
 
-  // Background self-healing sync of the fallback tunnel URL when connected on local Wi-Fi
+  // Bidirectional self-healing sync of connection URLs (both LAN IP and Remote Tunnel)
   useEffect(() => {
-    if (isConnected && hostUrl) {
-      const syncFallbackUrl = async () => {
+    if (isConnected) {
+      const syncUrls = async () => {
+        const fetchWithTimeout = async (url: string, headers: Record<string, string> = {}, timeoutMs = 3000) => {
+          const controller = new AbortController();
+          const id = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            const res = await fetch(url, { headers, signal: controller.signal });
+            clearTimeout(id);
+            return res;
+          } catch (e) {
+            clearTimeout(id);
+            throw e;
+          }
+        };
+
         try {
-          const response = await fetch(`${hostUrl}/api/pairing/status`);
-          if (response.ok) {
+          let response: Response | null = null;
+          
+          if (hostUrl) {
+            try {
+              response = await fetchWithTimeout(`${hostUrl}/api/pairing/status`, {}, 3000);
+            } catch (err) {
+              console.log('[App] Local host status query failed during sync. Trying fallback...');
+            }
+          }
+          
+          if ((!response || !response.ok) && fallbackHostUrl) {
+            try {
+              response = await fetchWithTimeout(
+                `${fallbackHostUrl}/api/pairing/status`, 
+                { 'Bypass-Tunnel-Reminder': 'true' }, 
+                4000
+              );
+            } catch (err) {
+              console.log('[App] Fallback host status query failed during sync.');
+            }
+          }
+          
+          if (response && response.ok) {
             const data = await response.json();
-            if (data && data.tunnelUrl) {
-              const savedFallback = await ApiService.getFallbackHostUrl();
-              if (savedFallback !== data.tunnelUrl) {
-                await ApiService.setFallbackHostUrl(data.tunnelUrl);
-                setFallbackHostUrl(data.tunnelUrl);
-                console.log('[App] Dynamically updated fallback tunnel URL in background:', data.tunnelUrl);
+            if (data) {
+              // 1. Sync local LAN URL if IP or Port changed (DHCP lease renewal helper)
+              if (data.ip && data.port) {
+                const currentLocalUrl = await ApiService.getHostUrl();
+                const newLocalUrl = `http://${data.ip}:${data.port}`;
+                if (currentLocalUrl !== newLocalUrl) {
+                  await ApiService.setHostUrl(newLocalUrl);
+                  setHostUrl(newLocalUrl);
+                  console.log('[App] Dynamically updated local LAN host URL:', newLocalUrl);
+                }
+              }
+              
+              // 2. Sync remote fallback tunnel URL if changed
+              if (data.tunnelUrl) {
+                const savedFallback = await ApiService.getFallbackHostUrl();
+                if (savedFallback !== data.tunnelUrl) {
+                  await ApiService.setFallbackHostUrl(data.tunnelUrl);
+                  setFallbackHostUrl(data.tunnelUrl);
+                  console.log('[App] Dynamically updated fallback tunnel URL:', data.tunnelUrl);
+                }
               }
             }
           }
         } catch (err) {
-          console.warn('[App] Background fallback URL sync failed:', err);
+          console.warn('[App] Bidirectional URL sync failed:', err);
         }
       };
       
-      syncFallbackUrl();
+      syncUrls();
     }
-  }, [isConnected, hostUrl]);
+  }, [isConnected, hostUrl, fallbackHostUrl]);
 
   // EAS Over-The-Air Automatic Updates Hook
   useEffect(() => {
