@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import * as signalR from '@microsoft/signalr';
 
 export interface TaskItem {
@@ -37,11 +38,19 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
   const [activeExecutionState, setActiveExecutionState] = useState<{ conversationId: string; prompt: string; isActive: boolean } | null>(null);
   const connectionRef = useRef<signalR.HubConnection | null>(null);
 
+  const hubUrlRef = useRef<string | null>(hubUrl);
+  const fallbackHubUrlRef = useRef<string | null>(fallbackHubUrl);
+
+  // Keep refs up-to-date on every render
+  hubUrlRef.current = hubUrl;
+  fallbackHubUrlRef.current = fallbackHubUrl;
+
   useEffect(() => {
     if (!hubUrl) return;
 
     let activeConnection: signalR.HubConnection | null = null;
     let isShutDown = false;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
 
     const buildAndSetupConnection = (url: string, isFallback: boolean) => {
       const builder = new signalR.HubConnectionBuilder()
@@ -109,13 +118,36 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
       });
 
       connection.onclose(() => {
-        if (!isShutDown) setIsConnected(false);
+        if (!isShutDown) {
+          setIsConnected(false);
+          console.log('[SignalR] Connection closed unexpectedly. Triggering self-healing reconnection...');
+          // Trigger a clean restart of the connection logic to evaluate both local and remote fallbacks
+          setTimeout(startConnection, 2000);
+        }
       });
       connection.onreconnecting(() => {
-        if (!isShutDown) setIsConnected(false);
+        if (!isShutDown) {
+          setIsConnected(false);
+          console.log('[SignalR] Connection lost. Attempting automatic SignalR reconnect...');
+          
+          if (reconnectTimeout) clearTimeout(reconnectTimeout);
+          reconnectTimeout = setTimeout(() => {
+            if (!isShutDown && connectionRef.current?.state === signalR.HubConnectionState.Reconnecting) {
+              console.log('[SignalR] Automatic reconnect is taking too long (6s). Forcing manual failover cycle...');
+              startConnection();
+            }
+          }, 6000);
+        }
       });
       connection.onreconnected(() => {
-        if (!isShutDown) setIsConnected(true);
+        if (!isShutDown) {
+          setIsConnected(true);
+          console.log('[SignalR] Connection successfully reconnected automatically!');
+          if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+          }
+        }
       });
 
       return connection;
@@ -124,8 +156,32 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
     const startConnection = async () => {
       if (isShutDown) return;
 
-      console.log(`[SignalR] Attempting local hub connection: ${hubUrl}`);
-      activeConnection = buildAndSetupConnection(hubUrl, false);
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
+
+      // Clean up any existing connection first to prevent parallel connection leaks!
+      if (connectionRef.current) {
+        try {
+          console.log('[SignalR] Cleaning up previous connection before starting new connect cycle...');
+          const oldConnection = connectionRef.current;
+          connectionRef.current = null;
+          await oldConnection.stop();
+        } catch (e) {
+          console.warn('[SignalR] Error stopping old connection:', e);
+        }
+      }
+
+      const currentHubUrl = hubUrlRef.current;
+      if (!currentHubUrl) {
+        console.log('[SignalR] No hub URL available in ref. Skipping connection attempt.');
+        setIsConnected(false);
+        return;
+      }
+
+      console.log(`[SignalR] Attempting local hub connection: ${currentHubUrl}`);
+      activeConnection = buildAndSetupConnection(currentHubUrl, false);
       connectionRef.current = activeConnection;
 
       try {
@@ -148,13 +204,19 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
         }
 
         // Try public fallback tunnel hub connection if available
-        if (fallbackHubUrl) {
-          console.log(`[SignalR] Local failed. Retrying with remote public fallback: ${fallbackHubUrl}`);
-          activeConnection = buildAndSetupConnection(fallbackHubUrl, true);
+        const currentFallbackHubUrl = fallbackHubUrlRef.current;
+        if (currentFallbackHubUrl) {
+          console.log(`[SignalR] Local failed. Retrying with remote public fallback: ${currentFallbackHubUrl}`);
+          activeConnection = buildAndSetupConnection(currentFallbackHubUrl, true);
           connectionRef.current = activeConnection;
 
           try {
-            await activeConnection.start();
+            const startPromise = activeConnection.start();
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Remote SignalR connection timeout')), 5000)
+            );
+
+            await Promise.race([startPromise, timeoutPromise]);
             console.log('[SignalR] Connected to remote public SignalR Hub successfully!');
             setIsConnected(true);
           } catch (fallbackErr) {
@@ -175,14 +237,33 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
 
     startConnection();
 
+    // AppState monitor for background -> active dynamic reconnection self-healing
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        console.log('[SignalR] App returned to foreground. Checking socket state...');
+        const state = connectionRef.current?.state;
+        if (state !== signalR.HubConnectionState.Connected && state !== signalR.HubConnectionState.Connecting) {
+          console.log(`[SignalR] Socket state is ${state}. Automatically self-healing connection...`);
+          startConnection();
+        }
+      }
+    };
+
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
     return () => {
       isShutDown = true;
+      appStateSubscription.remove();
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
       if (connectionRef.current) {
         connectionRef.current.stop().catch(() => {});
         connectionRef.current = null;
       }
     };
-  }, [hubUrl, fallbackHubUrl]);
+  }, [hubUrl]);
 
   return {
     isConnected,

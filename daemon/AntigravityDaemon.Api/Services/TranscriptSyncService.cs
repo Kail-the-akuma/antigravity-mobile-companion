@@ -43,7 +43,7 @@ namespace AntigravityDaemon.Api.Services
             public object? tool_calls { get; set; }
         }
 
-        public async Task<string> PollAgentResponseAsync(string remoteId, string expectedContent)
+        public async Task<string> PollAgentResponseAsync(string remoteId, string expectedContent, int initialLastStepIndex = -1)
         {
             string logPath = $@"C:\Users\Hugo\.gemini\antigravity\brain\{remoteId}\.system_generated\logs\transcript.jsonl";
 
@@ -59,26 +59,29 @@ namespace AntigravityDaemon.Api.Services
                 throw new FileNotFoundException($"Transcript log file not found at {logPath}");
             }
 
-            // Capture the last step index in the transcript log before polling starts
-            int lastStepIndex = -1;
-            try
+            // Capture the last step index in the transcript log before polling starts if not pre-provided
+            int lastStepIndex = initialLastStepIndex;
+            if (lastStepIndex == -1)
             {
-                var initialLines = await File.ReadAllLinesAsync(logPath);
-                for (int i = initialLines.Length - 1; i >= 0; i--)
+                try
                 {
-                    var line = initialLines[i];
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-                    var parsed = JsonSerializer.Deserialize<TranscriptLine>(line);
-                    if (parsed != null)
+                    var initialLines = await File.ReadAllLinesAsync(logPath);
+                    for (int i = initialLines.Length - 1; i >= 0; i--)
                     {
-                        lastStepIndex = parsed.step_index;
-                        break;
+                        var line = initialLines[i];
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+                        var parsed = JsonSerializer.Deserialize<TranscriptLine>(line);
+                        if (parsed != null)
+                        {
+                            lastStepIndex = parsed.step_index;
+                            break;
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Companion] Warning reading initial transcript lines: {ex.Message}");
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Companion] Warning reading initial transcript lines: {ex.Message}");
+                }
             }
 
             int timeoutSeconds = 120;
@@ -146,28 +149,31 @@ namespace AntigravityDaemon.Api.Services
                     var linesAfter = parsedLines.Skip(sentMessageIndex + 1).ToList();
                     if (linesAfter.Any())
                     {
-                        var lastLine = linesAfter.Last();
-
-                        bool lastIsModelReply = lastLine.source == "MODEL" &&
-                                                lastLine.status == "DONE" &&
-                                                !string.IsNullOrEmpty(lastLine.content) &&
-                                                (lastLine.type == "PLANNER_RESPONSE" || lastLine.type == null);
-
-                        if (lastIsModelReply)
+                        // Search backwards for the last valid model response text to avoid being blocked by system logs or tool output steps
+                        for (int i = linesAfter.Count - 1; i >= 0; i--)
                         {
-                            bool hasToolCalls = false;
-                            if (lastLine.tool_calls != null)
-                            {
-                                using var doc = JsonDocument.Parse(JsonSerializer.Serialize(lastLine.tool_calls));
-                                if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
-                                {
-                                    hasToolCalls = true;
-                                }
-                            }
+                            var candidateLine = linesAfter[i];
+                            bool isModelReply = candidateLine.source == "MODEL" &&
+                                                candidateLine.status == "DONE" &&
+                                                !string.IsNullOrEmpty(candidateLine.content) &&
+                                                (candidateLine.type == "PLANNER_RESPONSE" || candidateLine.type == null);
 
-                            if (!hasToolCalls)
+                            if (isModelReply)
                             {
-                                return lastLine.content!;
+                                bool hasToolCalls = false;
+                                if (candidateLine.tool_calls != null)
+                                {
+                                    using var doc = JsonDocument.Parse(JsonSerializer.Serialize(candidateLine.tool_calls));
+                                    if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+                                    {
+                                        hasToolCalls = true;
+                                    }
+                                }
+
+                                if (!hasToolCalls)
+                                {
+                                    return candidateLine.content!;
+                                }
                             }
                         }
                     }

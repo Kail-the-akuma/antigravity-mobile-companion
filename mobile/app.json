@@ -21,7 +21,9 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "updates": {},
+    "updates": {
+      "url": "https://u.expo.dev/f151b975-145e-4222-90c1-0a9f9ae3d60e"
+    },
     "extra": {
       "eas": {
         "projectId": "f151b975-145e-4222-90c1-0a9f9ae3d60e"

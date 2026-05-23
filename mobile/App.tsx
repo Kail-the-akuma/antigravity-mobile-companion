@@ -10,6 +10,7 @@ import {
   ScrollView,
   Alert,
   Platform,
+  TextInput,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from './src/theme/colors';
@@ -58,6 +59,32 @@ function AppContent() {
   const [pendingApprovals, setPendingApprovals] = useState<Record<string, any>>({});
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [isEditingTunnel, setIsEditingTunnel] = useState(false);
+  const [tempTunnelUrl, setTempTunnelUrl] = useState('');
+
+  const handleSaveTunnelUrl = async () => {
+    const cleanUrl = tempTunnelUrl.trim();
+    if (cleanUrl) {
+      if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+        Alert.alert('Erro de Validação', 'O URL do túnel tem de começar com http:// ou https://');
+        return;
+      }
+    }
+    
+    try {
+      if (cleanUrl) {
+        await ApiService.setFallbackHostUrl(cleanUrl);
+        setFallbackHostUrl(cleanUrl);
+      } else {
+        await ApiService.clearFallbackHostUrl();
+        setFallbackHostUrl(null);
+      }
+      setIsEditingTunnel(false);
+      Alert.alert('Sucesso', 'Túnel remoto atualizado!');
+    } catch (err: any) {
+      Alert.alert('Erro', 'Não foi possível guardar o túnel: ' + err.message);
+    }
+  };
 
   // Initialize global SignalR Hub connection if device is paired
   const hubUrl = hostUrl ? `${hostUrl}/hubs/companion` : null;
@@ -100,8 +127,8 @@ function AppContent() {
   // EAS Over-The-Air Automatic Updates Hook
   useEffect(() => {
     async function checkAndApplyUpdates() {
-      if (__DEV__) {
-        console.log('Running in development mode. Skipping EAS OTA Updates check.');
+      if (!Updates.isEnabled) {
+        console.log('EAS Updates service is not enabled in this build. Skipping check.');
         return;
       }
       try {
@@ -334,8 +361,31 @@ function AppContent() {
       }, 1500);
 
       try {
+        // Issue 2 Fix: Check presented notifications on app boot to catch background TunnelUrlUpdate
+        // without requiring the user to tap on the notification.
+        let foundTunnelUrl: string | null = null;
+        try {
+          const presented = await Notifications.getPresentedNotificationsAsync().catch(() => []);
+          for (const notification of presented) {
+            const data = notification.request.content.data as any;
+            if (data && data.type === 'TunnelUrlUpdate' && data.tunnelUrl) {
+              console.log('[App Boot] Found active TunnelUrlUpdate in presented notifications:', data.tunnelUrl);
+              foundTunnelUrl = data.tunnelUrl;
+              break;
+            }
+          }
+        } catch (notifErr) {
+          console.warn('Error reading presented notifications on boot:', notifErr);
+        }
+
         const url = await ApiService.getHostUrl();
-        const fallbackUrl = await ApiService.getFallbackHostUrl();
+        let fallbackUrl = await ApiService.getFallbackHostUrl();
+
+        if (foundTunnelUrl && foundTunnelUrl !== fallbackUrl) {
+          await ApiService.setFallbackHostUrl(foundTunnelUrl);
+          fallbackUrl = foundTunnelUrl;
+        }
+
         const identity = await CryptoService.getIdentity();
 
         if (!resolved) {
@@ -563,7 +613,38 @@ function AppContent() {
 
             <View style={styles.settingsSection}>
               <Text style={styles.settingsLabel}>Ligação Remota (Túnel)</Text>
-              <Text style={styles.settingsValue}>{fallbackHostUrl || 'Nenhum túnel ativo'}</Text>
+              {isEditingTunnel ? (
+                <View style={styles.inlineEditRow}>
+                  <TextInput
+                    style={styles.settingsInput}
+                    value={tempTunnelUrl}
+                    onChangeText={setTempTunnelUrl}
+                    placeholder="https://xxx.loca.lt"
+                    placeholderTextColor={Colors.textMuted}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                  />
+                  <TouchableOpacity style={styles.saveBtn} onPress={handleSaveTunnelUrl}>
+                    <Text style={styles.saveBtnText}>OK</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsEditingTunnel(false)}>
+                    <Text style={styles.cancelBtnText}>X</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.inlineDisplayRow}>
+                  <Text style={[styles.settingsValue, { flex: 1, marginRight: 8 }]} numberOfLines={1} ellipsizeMode="middle">
+                    {fallbackHostUrl || 'Nenhum túnel ativo'}
+                  </Text>
+                  <TouchableOpacity style={styles.editBtn} onPress={() => {
+                    setTempTunnelUrl(fallbackHostUrl || '');
+                    setIsEditingTunnel(true);
+                  }}>
+                    <Text style={styles.editBtnText}>Editar</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* Manual OTA Updates Check */}
@@ -575,10 +656,10 @@ function AppContent() {
                 style={styles.updateBtn} 
                 onPress={async () => {
                   setCheckingUpdates(true);
-                  if (__DEV__ || !Updates.isEnabled) {
+                  if (!Updates.isEnabled) {
                     Alert.alert(
                       'Atualizações Desativadas',
-                      'As atualizações OTA (EAS Update) estão desativadas em ambiente de desenvolvimento ou em builds de testes locais.'
+                      'O serviço de atualizações (expo-updates) não está ativo nesta build. Garanta que a app foi compilada com suporte a updates no app.json.'
                     );
                     setCheckingUpdates(false);
                     return;
@@ -958,5 +1039,65 @@ const styles = StyleSheet.create({
     color: Colors.primaryHover,
     fontWeight: '700',
     fontSize: 14,
+  },
+  inlineEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  settingsInput: {
+    flex: 1,
+    backgroundColor: Colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    color: Colors.text,
+    fontSize: 13,
+    marginRight: 6,
+  },
+  saveBtn: {
+    backgroundColor: Colors.success,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 4,
+  },
+  saveBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  cancelBtn: {
+    backgroundColor: Colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  cancelBtnText: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  inlineDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editBtn: {
+    backgroundColor: 'rgba(94, 92, 230, 0.1)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(94, 92, 230, 0.2)',
+  },
+  editBtnText: {
+    color: Colors.primary,
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 });

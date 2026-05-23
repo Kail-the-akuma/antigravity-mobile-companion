@@ -210,6 +210,12 @@ namespace AntigravityDaemon.Api.Controllers
                     string? remoteId = conv.RemoteConversationId;
                     bool isNew = string.IsNullOrEmpty(remoteId);
 
+                    int preCommandLastStepIndex = -1;
+                    if (!isNew)
+                    {
+                        preCommandLastStepIndex = GetLastStepIndexFromTranscript(remoteId!);
+                    }
+
                     if (isNew)
                     {
                         remoteId = await cliBridge.RunAgentNewConversationAsync(request.Content);
@@ -222,7 +228,7 @@ namespace AntigravityDaemon.Api.Controllers
                         await cliBridge.RunAgentSendMessageAsync(remoteId!, request.Content);
                     }
 
-                    string agentReply = await syncService.PollAgentResponseAsync(remoteId!, request.Content);
+                    string agentReply = await syncService.PollAgentResponseAsync(remoteId!, request.Content, preCommandLastStepIndex);
 
                     // Log agent response to console
                     Console.ForegroundColor = ConsoleColor.Green;
@@ -564,6 +570,32 @@ namespace AntigravityDaemon.Api.Controllers
             await _hubContext.Clients.All.SendAsync("ConversationPinned", id.ToString(), conversation.IsPinned);
 
             return Ok(new { message = conversation.IsPinned ? "Conversa fixada." : "Conversa desafixada.", isPinned = conversation.IsPinned });
+        }
+
+        private int GetLastStepIndexFromTranscript(string remoteId)
+        {
+            try
+            {
+                string logPath = $@"C:\Users\Hugo\.gemini\antigravity\brain\{remoteId}\.system_generated\logs\transcript.jsonl";
+                if (System.IO.File.Exists(logPath))
+                {
+                    var lines = System.IO.File.ReadAllLines(logPath);
+                    for (int i = lines.Length - 1; i >= 0; i--)
+                    {
+                        var line = lines[i];
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+                        var parsed = System.Text.Json.JsonSerializer.Deserialize<AntigravityDaemon.Api.Services.TranscriptSyncService.TranscriptLine>(line);
+                        if (parsed != null)
+                        {
+                            return parsed.step_index;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return -1;
         }
     }
 }
