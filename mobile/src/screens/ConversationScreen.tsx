@@ -18,6 +18,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { Colors } from '../theme/colors';
 import { ApiService } from '../services/api';
 import { ChatMessage, ApprovalRequest, CompanionEvent } from '../hooks/useSignalR';
+import { sqliteService } from '../services/sqlite';
 import { MessageBubble } from '../components/MessageBubble';
 import { PlanReviewer } from '../components/PlanReviewer';
 import { styles } from './ConversationScreen.styles';
@@ -261,6 +262,18 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
       const events = await ApiService.syncEvents(activeId, sinceId);
       if (events && events.length > 0) {
         console.log(`[ConversationScreen] Received ${events.length} delta events. Processing...`);
+        
+        // 1. Gravar de forma transacional na SQLite local móvel e atualizar lastProcessedEventId
+        const lastId = Math.max(...events.map(e => e.sequenceId));
+        await sqliteService.saveSucceededEvents(events.map(e => ({
+          sequenceId: e.sequenceId,
+          conversationId: e.conversationId,
+          eventType: e.eventType,
+          payloadJson: e.payloadJson,
+          timestamp: e.timestamp
+        })), lastId);
+
+        // 2. Projetar reativamente na UI do telemóvel
         dispatch({ type: 'PROCESS_EVENTS', events, conversationId: activeId });
 
         // Update global active approval state if latest delta modified it
@@ -278,6 +291,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
               status: payload.Status || payload.status || 'Pending',
               createdAt: payload.CreatedAt || payload.createdAt || lastApprovalEvent.timestamp,
               conversationId: activeId,
+              nonce: payload.Nonce || payload.nonce || '',
+              expiresAtUtc: payload.ExpiresAtUtc || payload.expiresAtUtc || ''
             });
           } else {
             setActiveApproval(null);
@@ -300,11 +315,27 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           setConversationId(activeId);
         }
 
+        // 1. Replay de eventos locais a partir do SQLite (Offline-First e Feedback Imediato)
+        console.log(`[ConversationScreen] Replaying local events from SQLite for conversation ${activeId}...`);
+        const localEvents = await sqliteService.getSucceededEvents(activeId!);
+        if (localEvents.length > 0) {
+          const mappedEvents = localEvents.map(e => ({
+            sequenceId: e.sequenceId,
+            conversationId: e.conversationId,
+            eventType: e.eventType,
+            payloadJson: e.payloadJson,
+            timestamp: e.timestamp
+          }));
+          dispatch({ type: 'PROCESS_EVENTS', events: mappedEvents, conversationId: activeId! });
+        }
+
         // Fetch existing messages if any
         await loadHistory(activeId!);
 
-        // Sincronizar delta de logs de eventos desde o início para calibrar o estado reativo
-        await syncDeltaEvents(activeId!, 0);
+        // 2. Sincronizar delta de logs de eventos a partir do cursor persistente local
+        const lastIdStr = await sqliteService.getMetadata('lastProcessedEventId');
+        const sinceId = lastIdStr ? parseInt(lastIdStr, 10) : 0;
+        await syncDeltaEvents(activeId!, sinceId);
       } catch (err: any) {
         console.error('Error initializing conversation:', err);
       } finally {
@@ -335,6 +366,17 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
     if (incomingEvent.conversationId !== conversationId) return;
 
     console.log('[ConversationScreen] Live Event received:', incomingEvent.sequenceId, incomingEvent.eventType);
+    
+    // Grava de forma transacional na SQLite local em tempo real
+    sqliteService.saveSucceededEvents([{
+      sequenceId: incomingEvent.sequenceId,
+      conversationId: incomingEvent.conversationId,
+      eventType: incomingEvent.eventType,
+      payloadJson: incomingEvent.payloadJson,
+      timestamp: incomingEvent.timestamp
+    }], incomingEvent.sequenceId)
+    .catch(e => console.error('[ConversationScreen] Erro ao gravar evento SignalR localmente:', e));
+
     dispatch({ type: 'PROCESS_EVENTS', events: [incomingEvent], conversationId });
 
     // Keep global App.tsx activeApproval aligned
@@ -348,6 +390,8 @@ export const ConversationScreen: React.FC<ConversationScreenProps> = ({
           status: payload.Status || payload.status || 'Pending',
           createdAt: payload.CreatedAt || payload.createdAt || incomingEvent.timestamp,
           conversationId: conversationId,
+          nonce: payload.Nonce || payload.nonce || '',
+          expiresAtUtc: payload.ExpiresAtUtc || payload.expiresAtUtc || ''
         });
       } catch (e) {
         console.warn('Failed to parse approval payload for sync:', e);

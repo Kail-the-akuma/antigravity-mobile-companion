@@ -14,5 +14,7 @@ namespace AntigravityDaemon.Core.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
         public string Signature { get; set; } = string.Empty;
+        public string Nonce { get; set; } = string.Empty;
+        public DateTime? ExpiresAt { get; set; }
     }
 }

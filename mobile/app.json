@@ -32,7 +32,8 @@
     "plugins": [
       "expo-secure-store",
       "expo-notifications",
-      "expo-updates"
+      "expo-updates",
+      "expo-sqlite"
     ],
     "runtimeVersion": {
       "policy": "appVersion"

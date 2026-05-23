@@ -24,6 +24,7 @@ import { usePairingState } from '../features/session/hooks/usePairingState';
 import { useNotificationEngine } from '../features/session/hooks/useNotificationEngine';
 import { useUrlAutoSync } from '../features/session/hooks/useUrlAutoSync';
 import { useApprovalEngine } from '../features/approval/hooks/useApprovalEngine';
+import { useSyncDispatcher } from '../features/session/hooks/useSyncDispatcher';
 import { ApiService } from '../services/api';
 
 interface Agent {
@@ -91,12 +92,16 @@ export const AppNavigator: React.FC = () => {
     setFallbackHostUrl,
   });
 
+  // Resilient background delta sync dispatcher
+  const { triggerSync } = useSyncDispatcher({ isConnected });
+
   const { handleApprovalResponse } = useApprovalEngine({
     activeApproval,
     setActiveApproval,
     processingApproval,
     setProcessingApproval,
     setPendingApprovals,
+    triggerSync,
   });
 
   const handlePairSuccess = async () => {

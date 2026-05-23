@@ -71,6 +71,15 @@ namespace AntigravityDaemon.Api.Controllers
                 .FirstOrDefaultAsync();
             Guid? conversationId = activeConversation?.Id;
 
+            // Gera nonce seguro de uso único (128 bits de entropia) e data de validade de 5 minutos
+            byte[] nonceBytes = new byte[16];
+            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(nonceBytes);
+            }
+            string serverNonce = Convert.ToBase64String(nonceBytes);
+            DateTime expiresAt = DateTime.UtcNow.AddMinutes(5);
+
             var approval = new ApprovalRequest
             {
                 TaskId = resolvedTaskId,
@@ -78,7 +87,9 @@ namespace AntigravityDaemon.Api.Controllers
                 ConversationId = conversationId,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                UpdatedAt = DateTime.UtcNow,
+                Nonce = serverNonce,
+                ExpiresAt = expiresAt
             };
 
             _context.Approvals.Add(approval);
@@ -96,7 +107,9 @@ namespace AntigravityDaemon.Api.Controllers
                         planStepsJson = approval.PlanStepsJson,
                         status = approval.Status,
                         createdAt = approval.CreatedAt,
-                        conversationId = approval.ConversationId?.ToString()
+                        conversationId = approval.ConversationId?.ToString(),
+                        nonce = approval.Nonce,
+                        expiresAtUtc = approval.ExpiresAt?.ToString("o")
                     }),
                     Timestamp = DateTime.UtcNow
                 };
@@ -105,8 +118,14 @@ namespace AntigravityDaemon.Api.Controllers
                 await _hubContext.Clients.All.SendAsync("ReceiveEvent", newEvent);
             }
 
-            // Broadcast the approval request to the Mobile Companion App via WebSockets
-            await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", approval.Id.ToString(), approval.TaskId.ToString(), approval.PlanStepsJson, conversationId?.ToString());
+            // Broadcast the approval request to the Mobile Companion App via WebSockets (com nonce e expiração)
+            await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", 
+                approval.Id.ToString(), 
+                approval.TaskId.ToString(), 
+                approval.PlanStepsJson, 
+                conversationId?.ToString(),
+                approval.Nonce,
+                approval.ExpiresAt?.ToString("o"));
 
             // Fire and forget push notification delivery to all registered device tokens
             var pushTokens = await _context.TrustedDevices
@@ -199,6 +218,15 @@ namespace AntigravityDaemon.Api.Controllers
                 .FirstOrDefaultAsync();
             Guid? conversationId = activeConversation?.Id;
 
+            // Gera nonce simulado e data de validade de 5 minutos
+            byte[] nonceBytes = new byte[16];
+            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(nonceBytes);
+            }
+            string serverNonce = Convert.ToBase64String(nonceBytes);
+            DateTime expiresAt = DateTime.UtcNow.AddMinutes(5);
+
             var approval = new ApprovalRequest
             {
                 TaskId = task.Id,
@@ -206,7 +234,9 @@ namespace AntigravityDaemon.Api.Controllers
                 ConversationId = conversationId,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                UpdatedAt = DateTime.UtcNow,
+                Nonce = serverNonce,
+                ExpiresAt = expiresAt
             };
             _context.Approvals.Add(approval);
             await _context.SaveChangesAsync();
@@ -214,8 +244,14 @@ namespace AntigravityDaemon.Api.Controllers
             // Broadcast the new task to the mobile client
             await _hubContext.Clients.All.SendAsync("ReceiveTaskUpdate", task.Id.ToString(), task.Status, task.PlanJson);
 
-            // Broadcast the approval request
-            await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", approval.Id.ToString(), approval.TaskId.ToString(), approval.PlanStepsJson, conversationId?.ToString());
+            // Broadcast the approval request (com nonce e expiração)
+            await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", 
+                approval.Id.ToString(), 
+                approval.TaskId.ToString(), 
+                approval.PlanStepsJson, 
+                conversationId?.ToString(),
+                approval.Nonce,
+                approval.ExpiresAt?.ToString("o"));
 
             // Fire and forget push notification simulation delivery
             var pushTokens = await _context.TrustedDevices
@@ -265,7 +301,13 @@ namespace AntigravityDaemon.Api.Controllers
             });
         }
 
-        public record RespondApprovalPayload(string Status, string Signature);
+        public record RespondApprovalPayload(
+            string Status, 
+            string Signature,
+            string? EventId = null,
+            string? TimestampUtc = null,
+            string? Nonce = null
+        );
 
         // POST: api/approvals/{id}/respond (Called remotely by the Mobile Companion App to approve/reject)
         [HttpPost("{id}/respond")]
@@ -278,9 +320,32 @@ namespace AntigravityDaemon.Api.Controllers
                 return NotFound("Approval request not found.");
             }
 
+            // 1. Idempotência absoluta (Garantia de Ack para retransmissões de rede transientes)
             if (approval.Status != "Pending")
             {
-                return BadRequest("Approval request has already been processed.");
+                if (approval.Signature == payload.Signature || approval.Status == payload.Status)
+                {
+                    return Ok(new { message = "Already processed successfully." });
+                }
+                return BadRequest("Approval request has already been processed with a different status or signature.");
+            }
+
+            // 2. Semântica de Expiração
+            if (approval.ExpiresAt.HasValue && DateTime.UtcNow > approval.ExpiresAt.Value)
+            {
+                approval.Status = "Timeout";
+                approval.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return StatusCode(408, new { message = "This approval request has expired." });
+            }
+
+            // 3. Validação do Nonce do Servidor (Proteção contra Replay-Attacks)
+            if (!string.IsNullOrEmpty(approval.Nonce) && approval.Nonce != payload.Nonce)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ALERT] Cryptographic Nonce mismatch for approval {id}. Replay-attack suspected!");
+                Console.ResetColor();
+                return BadRequest("Invalid cryptographic nonce. Permission denied.");
             }
 
             approval.Status = payload.Status; // Approved, Rejected
@@ -298,7 +363,8 @@ namespace AntigravityDaemon.Api.Controllers
                         taskId = approval.TaskId,
                         status = approval.Status,
                         signature = approval.Signature,
-                        updatedAt = approval.UpdatedAt
+                        updatedAt = approval.UpdatedAt,
+                        eventId = payload.EventId // Regista o UUID v7 do telemóvel para auditabilidade
                     }),
                     Timestamp = DateTime.UtcNow
                 };

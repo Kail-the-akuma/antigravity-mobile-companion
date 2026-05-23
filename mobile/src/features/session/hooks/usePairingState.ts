@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { ApiService } from '../../../services/api';
 import { CryptoService } from '../../../services/crypto';
+import { sqliteService } from '../../../services/sqlite';
 
 type Screen = 'loading' | 'pairing' | 'agents' | 'conversations' | 'conversation' | 'deleted_conversations' | 'models';
 
@@ -59,6 +60,11 @@ export const usePairingState = ({
       }, 1500);
 
       try {
+        // Inicializa o banco de dados SQLite local
+        await sqliteService.initialize().catch(err => {
+          console.error('[usePairingState] Erro ao inicializar SQLite local:', err);
+        });
+
         // Read presented notifications on app boot to catch background TunnelUrlUpdate
         let foundTunnelUrl: string | null = null;
         try {
