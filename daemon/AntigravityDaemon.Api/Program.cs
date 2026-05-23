@@ -241,17 +241,12 @@ try
     Console.WriteLine("🖥️  LAUNCHING NATIVE DESKTOP DASHBOARD...");
     Console.ResetColor();
 
-    var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-    var tempPath = Path.Combine(localAppData, "AntigravityCompanion", "WebView2_Profile");
-    Directory.CreateDirectory(tempPath);
-
     var window = new PhotinoWindow()
         .SetTitle("Antigravity Companion - Desktop Control Center")
         .SetUseOsDefaultSize(false)
         .SetSize(1200, 800)
         .Center()
-        .SetTemporaryFilesPath(tempPath)
-        .Load("http://localhost:5117/index.html");
+        .Load("http://127.0.0.1:5117/index.html");
 
     // Start native GUI message loop (blocks until window is closed)
     window.WaitForClose();
