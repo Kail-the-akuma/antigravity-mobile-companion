@@ -67,3 +67,26 @@ export const parseApprovalRequested = (payloadJson: string): ApprovalRequestedPa
     return null;
   }
 };
+
+export interface AgentFinishedPayload {
+  id: string;
+  role: 'user' | 'agent' | 'user-ide';
+  content: string;
+  timestamp: string;
+}
+
+export const parseAgentFinished = (payloadJson: string): AgentFinishedPayload | null => {
+  try {
+    if (!payloadJson) return null;
+    const data = JSON.parse(payloadJson);
+    return {
+      id: data.id || data.Id || '',
+      role: (data.role || data.Role || 'agent') as 'user' | 'agent' | 'user-ide',
+      content: data.content || data.Content || '',
+      timestamp: data.timestamp || data.Timestamp || new Date().toISOString(),
+    };
+  } catch (e) {
+    console.warn('[Protocol] Falha no parse do payload de AgentFinished:', e);
+    return null;
+  }
+};

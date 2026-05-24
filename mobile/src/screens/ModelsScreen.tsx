@@ -104,7 +104,7 @@ export const ModelsScreen: React.FC<ModelsScreenProps> = ({ onBack }) => {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.innerContainer, { paddingTop: Math.max(insets.top, 16) }]}>
+      <View style={[styles.innerContainer, { paddingTop: 8 }]}>
         {/* HEADER SECTION */}
         <View style={styles.headerRow}>
           <View style={styles.headerTextGroup}>
@@ -201,15 +201,12 @@ export const ModelsScreen: React.FC<ModelsScreenProps> = ({ onBack }) => {
                   ]}
                 >
                   <View style={styles.quotaHeaderRow}>
-                    <View style={styles.quotaTitleRow}>
-                      <Text style={styles.modelNameText} numberOfLines={1} ellipsizeMode="tail">
-                        {item.name}
-                      </Text>
-                      {item.isDepleted && <Text style={styles.warningIcon}>⚠️</Text>}
-                    </View>
-                    <Text style={styles.refreshLabelText}>{item.refreshTime}</Text>
+                    <Text style={styles.modelNameText} numberOfLines={2}>
+                      {item.name} {item.isDepleted && <Text style={styles.warningIcon}>⚠️</Text>}
+                    </Text>
                   </View>
                   <View style={styles.segmentsContainer}>{segments}</View>
+                  <Text style={styles.refreshLabelText}>{item.refreshTime}</Text>
                 </View>
               );
             })}
@@ -348,15 +345,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   creditsButtons: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 8,
     width: '100%',
   },
   activityBtn: {
-    flex: 1,
+    width: '100%',
     borderWidth: 1,
     borderColor: '#3A3A3C',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
@@ -368,9 +365,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   getCreditsBtn: {
-    flex: 1.3,
+    width: '100%',
     backgroundColor: '#007AFF', // Clean iOS blue
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
@@ -423,9 +420,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     marginTop: 2,
+    width: '100%',
   },
   segmentBar: {
-    width: 26,
+    flex: 1,
     height: 6,
     borderRadius: 3,
   },
@@ -439,7 +437,8 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: 11,
     fontWeight: '500',
-    textAlign: 'right',
+    textAlign: 'left',
+    marginTop: 4,
   },
   backButton: {
     backgroundColor: Colors.surfaceLight,

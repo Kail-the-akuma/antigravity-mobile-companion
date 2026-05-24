@@ -151,7 +151,6 @@ Apply live "ReceiveEvent" via Reducer        │
      │                              Reconnection (AppState)
      │                                       │
      └────────────────◄──────────────────────┘
-            Pull Delta REST: GET /api/events/sync?sinceId=X
 ```
 
 ### Reconnection Self-Healing (useRef Refinement)
@@ -159,18 +158,29 @@ To prevent network thrashing, the reconnection effect tracks the `lastProcessedE
 
 ---
 
-## 10. Fase I & Refinamento Mission Control (Evolução Recente)
+## 10. Fase I & II - Refinamentos e Governação Operacional (Evolução Recente)
 
-A **Fase I** e a evolução visual do ecossistema redesenharam o Antigravity Companion de uma aplicação de chat convencional para uma verdadeira **Consola de Operações / Camada de Governação (Mission Control / Governance Layer)** de alta densidade e fiabilidade:
+O ecossistema evoluiu em duas fases consecutivas de estabilização estrutural, visual e de conectividade, elevando o **Antigravity Companion** a uma consola operacional de alta fiabilidade:
 
-1. **🏛️ Persistência Móvel Nativa (`expo-sqlite`):** Substituição do AsyncStorage por base de dados SQLite nativa transacional (`companion_local.db`), assegurando consistência ACID, replays offline-first rápidos e persistência atómica da fila local de aprovações.
-2. **⏱️ Identificadores Cronológicos (UUID v7):** Adoção do padrão UUID v7 (RFC 9562) para geração de identificadores lexicograficamente ordenados no telemóvel, evitando a fragmentação do índice do SQLite e garantindo integridade de ordenação temporal nativa.
-3. **🔄 Redutor 100% Event-Sourced (Left Fold):** Remoção de todas as mutações imperativas (`SET_THINKING`, `SET_ACTIVE_APPROVAL`). O estado da UI do telemóvel é agora uma projeção matemática puramente reativa e determinística baseada no Event Store imutável.
-4. **📡 Conectividade Debounced (Fim do "Blink"):** Implementação de um debouncer reativo de 4.5 segundos na UI do indicador de rede. Flutuações transientes ou transições rápidas (Wi-Fi para celular) são tratadas em background mantendo a barra de status verde estável.
-5. **📱 Ergonomia Mission Control & Timeline Planar (UI/UX Android):**
+### 🏛️ Fase I: Arquitetura Event-Sourced & Conectividade Hardened
+1. **Persistência Móvel Nativa (`expo-sqlite`):** Substituição do AsyncStorage por base de dados SQLite nativa transacional (`companion_local.db`), assegurando consistência ACID, replays offline-first rápidos e persistência atómica da fila local de aprovações.
+2. **Identificadores Cronológicos (UUID v7):** Adoção do padrão UUID v7 (RFC 9562) para geração de identificadores lexicograficamente ordenados no telemóvel, evitando a fragmentação do índice do SQLite e garantindo integridade de ordenação temporal nativa.
+3. **Redutor 100% Event-Sourced (Left Fold):** Remoção de todas as mutações imperativas (`SET_THINKING`, `SET_ACTIVE_APPROVAL`). O estado da UI do telemóvel é agora uma projeção matemática puramente reativa e determinística baseada no Event Store imutável.
+4. **Conectividade Debounced (Fim do "Blink"):** Implementação de um debouncer reativo de 4.5 segundos na UI do indicador de rede. Flutuações transientes ou transições rápidas (Wi-Fi para celular) são tratadas em background mantendo a barra de status verde estável.
+5. **Ergonomia Mission Control & Timeline Planar (UI/UX Android):**
    * **Timeline Planar Reta:** Conversão das bolhas arredondadas de chat numa timeline planar simétrica de 100% de largura útil com metadados estruturados.
    * **Ocultação de Teclado Reativa:** O banner de plano changeset é ocultado dinamicamente durante digitação ativa no chat, compactando também os paddings do cabeçalho da conversa para libertar espaço vertical sob o teclado.
    * **Quotas e Modelos Reais:** Sincronização fidedigna com as cotas reais de mercado (Gemini 1.5 Flash/Pro, Claude 3.5 Sonnet, GPT-4o) e ajuste seguro do rodapé contra barras de gestos nativas do Android/iOS.
+
+### ⚡ Fase II: Refinamento Ergonómico, Notificações e Robustez de Quotas (Sessão Atual)
+1. **Validação Instantânea de Notificações:** Integração e configuração do pacote `expo-notifications` no [AppNavigator.tsx](file:///c:/Users/Hugo/Documents/GitHub/AntigravityMobileCompanion/mobile/src/navigation/AppNavigator.tsx), expondo um botão reativo `[⚡ TEST PUSH]` no cabeçalho global e um trigger automático de 2.5s após boot para testar a entrega física de banners de sistema locais com som.
+2. **Correção de Roles na Timeline (Mensagens IA):** Resolução do bug de exibição onde as respostas dos agentes eram incorretamente rotuladas como `👤 OPERADOR MÓVEL`. Implementámos o parser do evento `AgentFinished` no [chatReducer.ts](file:///c:/Users/Hugo/Documents/GitHub/AntigravityMobileCompanion/mobile/src/features/session/reducers/chatReducer.ts) e robustecemos a desserialização de histórico no [useChatEngine.ts](file:///c:/Users/Hugo/Documents/GitHub/AntigravityMobileCompanion/mobile/src/features/session/hooks/useChatEngine.ts) com mapeamento tolerante a diferenças de casing (PascalCase/camelCase).
+3. **Eliminação do Espaço Superior Morto:** Purga de margens verticais e insets de notch redundantes em todos os ecrãs internos. Reduzimos o padding superior dos cabeçalhos na lista de agentes (para `12`), ecrã de conversas (para `10`) e ecrã de modelos (removido `insets.top` redundante e fixado em `8`), aproveitando a barra global de status que já protege a área segura.
+4. **Redesenho Responsivo do Ecrã de Quotas de Modelos:**
+   * **Segmentos Flexíveis:** Alterada a largura estática dos progress bars de quota em `segmentBar` de `width: 26` para `flex: 1`, distribuindo as cápsulas uniformemente em qualquer resolução física de telemóvel.
+   * **Anulação de Overlaps de Texto:** Reorganização da linha de quota (`quotaRow`) para empilhar o nome do modelo (com suporte a quebra de linha dupla e ícone de esgotado `⚠️`) por cima das cápsulas, isolando o tempo de refresh no rodapé.
+   * **Compactação de Créditos:** Empilhamento vertical dos botões de faturação e carregamento de créditos com largura total (`100%`), eliminando colisões de texto e quebras feias de layout.
+5. **Verificação de Compilação Estrita (Zero Erros):** Execução do compilador de TypeScript (`npx tsc --noEmit`) na pasta móvel e compilação do Daemon .NET 8 (`dotnet build`), ambos validados com **0 erros de compilação**, garantindo estabilidade absoluta para a geração do APK.
 
 ---
 

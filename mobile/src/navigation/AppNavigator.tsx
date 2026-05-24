@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { Colors } from '../theme/colors';
 import { PairingScreen } from '../screens/PairingScreen';
 import { AgentListScreen } from '../screens/AgentListScreen';
@@ -48,6 +49,37 @@ export const AppNavigator: React.FC = () => {
   const [processingApproval, setProcessingApproval] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<Record<string, any>>({});
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  const testLocalNotification = async () => {
+    try {
+      console.log('[TestNotification] Triggering test local notification...');
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '⚡ Antigravity - Teste de Notificação',
+          body: 'O canal de notificações local está 100% operacional e reativo!',
+          data: {
+            conversationId: 'test-conv',
+            type: 'TestNotification',
+          },
+        },
+        trigger: null,
+      });
+      console.log('[TestNotification] Test notification scheduled!');
+    } catch (err) {
+      console.warn('[TestNotification] Failed to schedule test notification:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (screen !== 'loading') {
+      const timer = setTimeout(() => {
+        testLocalNotification();
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [screen]);
+
+
 
   // Initialize global SignalR Hub connection if device is paired
   const hubUrl = hostUrl ? `${hostUrl}/hubs/companion` : null;
@@ -163,7 +195,7 @@ export const AppNavigator: React.FC = () => {
   return (
     <View style={styles.container}>
       {screen !== 'pairing' && (
-        <SafeAreaView style={debouncedIsConnected ? styles.safeConnected : styles.safeDisconnected}>
+        <SafeAreaView edges={['top', 'left', 'right']} style={debouncedIsConnected ? styles.safeConnected : styles.safeDisconnected}>
           <View style={styles.statusBarRow}>
             <View style={styles.statusIndicator}>
               <View style={[styles.statusDot, debouncedIsConnected ? styles.dotConnected : styles.dotDisconnected]} />
@@ -171,19 +203,24 @@ export const AppNavigator: React.FC = () => {
                 {debouncedIsConnected ? 'Ligado ao Daemon' : 'A ligar ao Daemon...'}
               </Text>
             </View>
-            <TouchableOpacity style={styles.settingsIconBtn} onPress={() => setShowSettingsModal(true)} activeOpacity={0.7}>
-              <View style={styles.slidersIcon}>
-                <View style={styles.sliderLine}>
-                  <View style={[styles.sliderNode, { top: 1 }]} />
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <TouchableOpacity style={styles.testPushBtn} onPress={testLocalNotification} activeOpacity={0.7}>
+                <Text style={styles.testPushBtnText}>⚡ TEST PUSH</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.settingsIconBtn} onPress={() => setShowSettingsModal(true)} activeOpacity={0.7}>
+                <View style={styles.slidersIcon}>
+                  <View style={styles.sliderLine}>
+                    <View style={[styles.sliderNode, { top: 1 }]} />
+                  </View>
+                  <View style={styles.sliderLine}>
+                    <View style={[styles.sliderNode, { top: 9 }]} />
+                  </View>
+                  <View style={styles.sliderLine}>
+                    <View style={[styles.sliderNode, { top: 5 }]} />
+                  </View>
                 </View>
-                <View style={styles.sliderLine}>
-                  <View style={[styles.sliderNode, { top: 9 }]} />
-                </View>
-                <View style={styles.sliderLine}>
-                  <View style={[styles.sliderNode, { top: 5 }]} />
-                </View>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
           </View>
         </SafeAreaView>
       )}
@@ -452,7 +489,7 @@ const styles = StyleSheet.create({
   statusIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   settingsIconBtn: {
     padding: 8,
@@ -501,5 +538,19 @@ const styles = StyleSheet.create({
     color: Colors.text,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  testPushBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: 'rgba(94, 92, 230, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(94, 92, 230, 0.3)',
+  },
+  testPushBtnText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
 });

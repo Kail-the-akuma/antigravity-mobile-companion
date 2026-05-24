@@ -77,13 +77,20 @@ export const useChatEngine = ({
   const loadHistory = useCallback(async (activeId: string) => {
     try {
       const existingMessages = await ApiService.getMessages(activeId);
-      const mapped = existingMessages.map((m: any) => ({
-        id: m.id,
-        conversationId: m.conversationId,
-        role: m.role as 'user' | 'agent' | 'user-ide',
-        content: m.content,
-        timestamp: m.timestamp,
-      }));
+      const mapped = existingMessages.map((m: any) => {
+        const rawRole = (m.role || m.Role || 'user').toLowerCase();
+        let role: 'user' | 'agent' | 'user-ide' = 'user';
+        if (rawRole === 'agent') role = 'agent';
+        else if (rawRole === 'user-ide' || rawRole === 'useride') role = 'user-ide';
+
+        return {
+          id: String(m.id || m.Id || ''),
+          conversationId: m.conversationId || m.ConversationId || '',
+          role,
+          content: m.content || m.Content || '',
+          timestamp: m.timestamp || m.Timestamp || new Date().toISOString(),
+        };
+      });
       dispatch({ type: 'SET_INITIAL_MESSAGES', messages: mapped.slice(-6) });
     } catch (err) {
       console.warn('[useChatEngine] Erro ao obter histórico de mensagens:', err);

@@ -1,5 +1,5 @@
 import { ChatMessage, ApprovalRequest, CompanionEvent } from '../../../hooks/useSignalR';
-import { CompanionEventType, parsePromptSent, parseApprovalRequested } from '../protocol/parsers';
+import { CompanionEventType, parsePromptSent, parseApprovalRequested, parseAgentFinished } from '../protocol/parsers';
 
 export interface ChatState {
   messages: ChatMessage[];
@@ -42,10 +42,27 @@ const eventHandlers: Record<CompanionEventType, ProjectionHandler> = {
     isThinking: false 
   }),
   
-  AgentFinished: (state) => ({ 
-    ...state, 
-    isThinking: false 
-  }),
+  AgentFinished: (state, event) => {
+    const payload = parseAgentFinished(event.payloadJson);
+    if (!payload) return { ...state, isThinking: false };
+
+    const msgId = payload.id || `agent-${event.sequenceId}`;
+    if (state.messages.some((m) => m.id === msgId)) {
+      return { ...state, isThinking: false };
+    }
+
+    return {
+      ...state,
+      messages: [...state.messages, {
+        id: msgId,
+        conversationId: event.conversationId,
+        role: 'agent' as const,
+        content: payload.content,
+        timestamp: payload.timestamp || event.timestamp || new Date().toISOString(),
+      }].slice(-6),
+      isThinking: false
+    };
+  },
   
   ApprovalApproved: (state) => ({ 
     ...state, 
