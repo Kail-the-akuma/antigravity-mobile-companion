@@ -4,7 +4,22 @@ import * as Notifications from 'expo-notifications';
 import { ApiService } from '../../../services/api';
 import { ApprovalRequest } from '../../../hooks/useSignalR';
 
+// Configurar o comportamento das notificações em primeiro plano (Foreground)
+// Garante que o banner visual e o som aparecem mesmo com a aplicação aberta no ecrã!
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
+
 type Screen = 'loading' | 'pairing' | 'agents' | 'conversations' | 'conversation' | 'deleted_conversations' | 'models';
+
 
 interface UseNotificationEngineProps {
   hostUrl: string | null;
@@ -121,10 +136,10 @@ export const useNotificationEngine = ({
   useEffect(() => {
     if (!activeApproval) return;
 
-    const approvalConvId = activeApproval.conversationId;
-    if (!approvalConvId) return;
+    // Usar a conversa selecionada como fallback se o Daemon enviar a conversa vazia/nula
+    const approvalConvId = activeApproval.conversationId || selectedConversationId;
 
-    if (screen === 'conversation' && selectedConversationId?.toLowerCase() === approvalConvId.toLowerCase()) {
+    if (screen === 'conversation' && selectedConversationId?.toLowerCase() === approvalConvId?.toLowerCase()) {
       console.log('[useNotificationEngine] Foreground SignalR: matching screen, approval modal will show.');
     } else {
       console.log('[useNotificationEngine] Foreground SignalR: different screen, scheduling local notification...');
@@ -134,17 +149,19 @@ export const useNotificationEngine = ({
           title: '⚡ Antigravity - Ação Requerida',
           body: 'O agente gerou um plano de alterações que necessita de revisão.',
           data: {
-            conversationId: approvalConvId.toLowerCase(),
+            conversationId: approvalConvId?.toLowerCase() || '',
             approvalId: activeApproval.id,
           },
         },
         trigger: null,
       });
 
-      setPendingApprovals(prev => ({
-        ...prev,
-        [approvalConvId.toLowerCase()]: activeApproval
-      }));
+      if (approvalConvId) {
+        setPendingApprovals(prev => ({
+          ...prev,
+          [approvalConvId.toLowerCase()]: activeApproval
+        }));
+      }
     }
   }, [activeApproval, screen, selectedConversationId, setPendingApprovals]);
 };

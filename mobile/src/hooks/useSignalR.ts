@@ -21,6 +21,7 @@ export interface ApprovalRequest {
   conversationId?: string;
   nonce?: string;
   expiresAtUtc?: string;
+  conversationTitle?: string;
 }
 
 export interface ChatMessage {
@@ -98,7 +99,7 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
         });
       });
 
-      connection.on('ReceiveApprovalRequest', (id: string, taskId: string, planStepsJson: string, conversationId?: string, nonce?: string, expiresAtUtc?: string) => {
+      connection.on('ReceiveApprovalRequest', (id: string, taskId: string, planStepsJson: string, conversationId?: string, nonce?: string, expiresAtUtc?: string, conversationTitle?: string) => {
         setActiveApproval({
           id,
           taskId,
@@ -107,7 +108,8 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
           createdAt: new Date().toISOString(),
           conversationId,
           nonce: nonce || '',
-          expiresAtUtc: expiresAtUtc || new Date(Date.now() + 5 * 60 * 1000).toISOString() // fallback 5 min
+          expiresAtUtc: expiresAtUtc || new Date(Date.now() + 5 * 60 * 1000).toISOString(), // fallback 5 min
+          conversationTitle: conversationTitle || 'Nova Conversa'
         });
       });
 

@@ -50,38 +50,8 @@ export const AppNavigator: React.FC = () => {
   const [pendingApprovals, setPendingApprovals] = useState<Record<string, any>>({});
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
-  const testLocalNotification = async () => {
-    if (Platform.OS === 'web') {
-      console.log('[TestNotification Web Mock] Notificação local disparada com sucesso!');
-      return;
-    }
-    try {
-      console.log('[TestNotification] Triggering test local notification...');
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: '⚡ Antigravity - Teste de Notificação',
-          body: 'O canal de notificações local está 100% operacional e reativo!',
-          data: {
-            conversationId: 'test-conv',
-            type: 'TestNotification',
-          },
-        },
-        trigger: null,
-      });
-      console.log('[TestNotification] Test notification scheduled!');
-    } catch (err) {
-      console.warn('[TestNotification] Failed to schedule test notification:', err);
-    }
-  };
+  // Notificações de teste removidas conforme pedido - Canal local validado.
 
-  useEffect(() => {
-    if (screen !== 'loading') {
-      const timer = setTimeout(() => {
-        testLocalNotification();
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [screen]);
 
 
 
@@ -208,9 +178,6 @@ export const AppNavigator: React.FC = () => {
               </Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <TouchableOpacity style={styles.testPushBtn} onPress={testLocalNotification} activeOpacity={0.7}>
-                <Text style={styles.testPushBtnText}>⚡ TEST PUSH</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={styles.settingsIconBtn} onPress={() => setShowSettingsModal(true)} activeOpacity={0.7}>
                 <View style={styles.slidersIcon}>
                   <View style={styles.sliderLine}>
@@ -277,12 +244,15 @@ export const AppNavigator: React.FC = () => {
       )}
 
       {/* Cryptographically Protected Global Approval Modal Overlay */}
-      {activeApproval && screen === 'conversation' && selectedConversationId?.toLowerCase() === activeApproval.conversationId?.toLowerCase() && (
+      {activeApproval && (
         <Modal transparent animationType="slide" visible={!!activeApproval}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Revisão de Plano Necessária</Text>
+                {activeApproval.conversationTitle ? (
+                  <Text style={styles.modalContextTitle}>💬 Contexto: {activeApproval.conversationTitle}</Text>
+                ) : null}
                 <Text style={styles.modalSubtitle}>Identidade Criptográfica Verificada</Text>
               </View>
 
@@ -409,6 +379,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  modalContextTitle: {
+    fontSize: 13,
+    color: '#FF9500',
+    fontWeight: '700',
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(255, 149, 0, 0.1)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 149, 0, 0.2)',
+    overflow: 'hidden',
   },
   modalBody: {
     padding: 20,
@@ -542,19 +525,5 @@ const styles = StyleSheet.create({
     color: Colors.text,
     textTransform: 'uppercase',
     letterSpacing: 1,
-  },
-  testPushBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    backgroundColor: 'rgba(94, 92, 230, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(94, 92, 230, 0.3)',
-  },
-  testPushBtnText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
   },
 });

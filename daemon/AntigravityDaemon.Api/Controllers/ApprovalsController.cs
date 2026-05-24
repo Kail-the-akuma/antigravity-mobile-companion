@@ -123,14 +123,15 @@ namespace AntigravityDaemon.Api.Controllers
                 await _hubContext.Clients.All.SendAsync("ReceiveEvent", newEvent);
             }
 
-            // Broadcast the approval request to the Mobile Companion App via WebSockets (com nonce e expiração)
+            // Broadcast the approval request to the Mobile Companion App via WebSockets (com nonce, expiração e título da conversa)
             await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", 
                 approval.Id.ToString(), 
                 approval.TaskId.ToString(), 
                 approval.PlanStepsJson, 
                 conversationId?.ToString(),
                 approval.Nonce,
-                approval.ExpiresAt?.ToString("o"));
+                approval.ExpiresAt?.ToString("o"),
+                activeConversation?.Title ?? "Nova Conversa");
 
             // Fire and forget push notification delivery to all registered device tokens
             var pushTokens = await _context.TrustedDevices
@@ -150,14 +151,15 @@ namespace AntigravityDaemon.Api.Controllers
                             to = token,
                             sound = "default",
                             title = "⚡ Antigravity - Pedido de Aprovação",
-                            body = payload.Prompt ?? "Solicitação de permissão ativa para o projeto.",
+                            body = $"[{activeConversation?.Title ?? "Conversa"}] {payload.Prompt ?? "Solicitação de permissão ativa."}",
                             data = new
                             {
                                 type = "ReceiveApprovalRequest",
                                 approvalId = approval.Id.ToString(),
                                 taskId = approval.TaskId.ToString(),
                                 planStepsJson = approval.PlanStepsJson,
-                                conversationId = conversationId?.ToString()
+                                conversationId = conversationId?.ToString(),
+                                conversationTitle = activeConversation?.Title ?? "Nova Conversa"
                             }
                         }).ToList();
 
@@ -249,14 +251,15 @@ namespace AntigravityDaemon.Api.Controllers
             // Broadcast the new task to the mobile client
             await _hubContext.Clients.All.SendAsync("ReceiveTaskUpdate", task.Id.ToString(), task.Status, task.PlanJson);
 
-            // Broadcast the approval request (com nonce e expiração)
+            // Broadcast the approval request (com nonce, expiração e título)
             await _hubContext.Clients.All.SendAsync("ReceiveApprovalRequest", 
                 approval.Id.ToString(), 
                 approval.TaskId.ToString(), 
                 approval.PlanStepsJson, 
                 conversationId?.ToString(),
                 approval.Nonce,
-                approval.ExpiresAt?.ToString("o"));
+                approval.ExpiresAt?.ToString("o"),
+                activeConversation?.Title ?? "Simulação");
 
             // Fire and forget push notification simulation delivery
             var pushTokens = await _context.TrustedDevices
@@ -276,14 +279,15 @@ namespace AntigravityDaemon.Api.Controllers
                             to = token,
                             sound = "default",
                             title = "⚡ Antigravity - Pedido de Aprovação (Simulação)",
-                            body = "Solicitação de permissão ativa (Simulação).",
+                            body = $"[Simulação] {activeConversation?.Title ?? "Nova Conversa"}",
                             data = new
                             {
                                 type = "ReceiveApprovalRequest",
                                 approvalId = approval.Id.ToString(),
                                 taskId = approval.TaskId.ToString(),
                                 planStepsJson = approval.PlanStepsJson,
-                                conversationId = conversationId?.ToString()
+                                conversationId = conversationId?.ToString(),
+                                conversationTitle = activeConversation?.Title ?? "Simulação"
                             }
                         }).ToList();
 
