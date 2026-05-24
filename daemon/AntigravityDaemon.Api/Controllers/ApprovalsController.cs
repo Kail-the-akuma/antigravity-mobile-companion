@@ -99,6 +99,7 @@ namespace AntigravityDaemon.Api.Controllers
             {
                 var newEvent = new CompanionEvent
                 {
+                    EventId = Guid.NewGuid(),
                     ConversationId = conversationId.Value,
                     EventType = "ApprovalRequested",
                     PayloadJson = JsonSerializer.Serialize(new {
@@ -111,7 +112,11 @@ namespace AntigravityDaemon.Api.Controllers
                         nonce = approval.Nonce,
                         expiresAtUtc = approval.ExpiresAt?.ToString("o")
                     }),
-                    Timestamp = DateTime.UtcNow
+                    TimestampUtc = DateTime.UtcNow,
+                    SourceDeviceId = "PC-IDE",
+                    CorrelationId = approval.Id.ToString(),
+                    IsReplayable = true,
+                    SchemaVersion = 1
                 };
                 _context.CompanionEvents.Add(newEvent);
                 await _context.SaveChangesAsync();
@@ -354,8 +359,15 @@ namespace AntigravityDaemon.Api.Controllers
 
             if (approval.ConversationId.HasValue)
             {
+                Guid resolvedEventId = Guid.NewGuid();
+                if (!string.IsNullOrEmpty(payload.EventId) && Guid.TryParse(payload.EventId, out var clientGuid))
+                {
+                    resolvedEventId = clientGuid;
+                }
+
                 var newEvent = new CompanionEvent
                 {
+                    EventId = resolvedEventId,
                     ConversationId = approval.ConversationId.Value,
                     EventType = approval.Status == "Approved" ? "ApprovalApproved" : "ApprovalRejected",
                     PayloadJson = JsonSerializer.Serialize(new {
@@ -366,7 +378,11 @@ namespace AntigravityDaemon.Api.Controllers
                         updatedAt = approval.UpdatedAt,
                         eventId = payload.EventId // Regista o UUID v7 do telemóvel para auditabilidade
                     }),
-                    Timestamp = DateTime.UtcNow
+                    TimestampUtc = DateTime.UtcNow,
+                    SourceDeviceId = "CompanionApp",
+                    CorrelationId = approval.Id.ToString(),
+                    IsReplayable = true,
+                    SchemaVersion = 1
                 };
                 _context.CompanionEvents.Add(newEvent);
             }

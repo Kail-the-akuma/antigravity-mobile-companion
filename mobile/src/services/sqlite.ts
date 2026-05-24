@@ -5,7 +5,7 @@ export interface LocalApprovalEvent {
   eventId: string;
   approvalId: string;
   nonce: string;
-  action: 'Approved' | 'Rejected';
+  action: 'Approved' | 'Rejected' | 'SendMessage';
   timestampUtc: string;
   expiresAtUtc: string;
   signature: string;
@@ -19,10 +19,33 @@ export interface SucceededEvent {
   eventType: string;
   payloadJson: string;
   timestamp: string;
+  eventId: string;
+  sourceDeviceId: string;
+  correlationId: string;
+  isReplayable: boolean;
+  schemaVersion: number;
 }
 
 class SQLiteService {
   private db: SQLite.SQLiteDatabase | null = null;
+  private listeners: (() => void)[] = [];
+
+  public subscribe(listener: () => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== listener);
+    };
+  }
+
+  private notify(): void {
+    this.listeners.forEach(l => {
+      try {
+        l();
+      } catch (err) {
+        console.warn('[SQLiteService] Erro no listener de subscricao:', err);
+      }
+    });
+  }
 
   // ==========================================
   // WEB STORAGE FALLBACK UTILS
@@ -102,9 +125,31 @@ class SQLiteService {
           conversationId TEXT NOT NULL,
           eventType TEXT NOT NULL,
           payloadJson TEXT NOT NULL,
-          timestamp TEXT NOT NULL
+          timestamp TEXT NOT NULL,
+          eventId TEXT,
+          sourceDeviceId TEXT,
+          correlationId TEXT,
+          isReplayable INTEGER DEFAULT 1,
+          schemaVersion INTEGER DEFAULT 1
         );
       `);
+
+      // Migração manual de colunas antigas para SucceededEvents se já existirem
+      try {
+        this.db.execSync(`ALTER TABLE SucceededEvents ADD COLUMN eventId TEXT;`);
+      } catch {}
+      try {
+        this.db.execSync(`ALTER TABLE SucceededEvents ADD COLUMN sourceDeviceId TEXT;`);
+      } catch {}
+      try {
+        this.db.execSync(`ALTER TABLE SucceededEvents ADD COLUMN correlationId TEXT;`);
+      } catch {}
+      try {
+        this.db.execSync(`ALTER TABLE SucceededEvents ADD COLUMN isReplayable INTEGER DEFAULT 1;`);
+      } catch {}
+      try {
+        this.db.execSync(`ALTER TABLE SucceededEvents ADD COLUMN schemaVersion INTEGER DEFAULT 1;`);
+      } catch {}
 
       console.log('[SQLiteService] Tabelas de sistema validadas/criadas com sucesso.');
       return this.db;
@@ -178,6 +223,7 @@ class SQLiteService {
         const events = this.getWebQueue();
         events.push({ ...event, syncAttempts: 0 });
         this.saveWebQueue(events);
+        this.notify();
       } catch (err) {
         console.error('[SQLiteService Web] Erro ao enfileirar:', err);
       }
@@ -201,7 +247,8 @@ class SQLiteService {
           event.schemaVersion
         ]
       );
-      console.log(`[SQLiteService] Evento ${event.eventId} (Aprovação: ${event.approvalId}) enfileirado localmente.`);
+      console.log(`[SQLiteService] Evento ${event.eventId} (Aprovação/Mensagem: ${event.approvalId}) enfileirado localmente.`);
+      this.notify();
     } catch (e) {
       console.error('[SQLiteService] Erro ao enfileirar evento:', e);
       throw e;
@@ -318,19 +365,29 @@ class SQLiteService {
       await db.withTransactionAsync(async () => {
         for (const event of events) {
           await db.runAsync(
-            `INSERT INTO SucceededEvents (sequenceId, conversationId, eventType, payloadJson, timestamp) 
-             VALUES (?, ?, ?, ?, ?) 
+            `INSERT INTO SucceededEvents (sequenceId, conversationId, eventType, payloadJson, timestamp, eventId, sourceDeviceId, correlationId, isReplayable, schemaVersion) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
              ON CONFLICT(sequenceId) DO UPDATE SET 
              conversationId = excluded.conversationId, 
              eventType = excluded.eventType, 
              payloadJson = excluded.payloadJson, 
-             timestamp = excluded.timestamp`,
+             timestamp = excluded.timestamp,
+             eventId = excluded.eventId,
+             sourceDeviceId = excluded.sourceDeviceId,
+             correlationId = excluded.correlationId,
+             isReplayable = excluded.isReplayable,
+             schemaVersion = excluded.schemaVersion`,
             [
               event.sequenceId,
               event.conversationId,
               event.eventType,
               event.payloadJson,
-              event.timestamp
+              event.timestamp,
+              event.eventId || '',
+              event.sourceDeviceId || 'PC-IDE',
+              event.correlationId || '',
+              event.isReplayable ? 1 : 0,
+              event.schemaVersion || 1
             ]
           );
         }
@@ -376,7 +433,12 @@ class SQLiteService {
         conversationId: r.conversationId,
         eventType: r.eventType,
         payloadJson: r.payloadJson,
-        timestamp: r.timestamp
+        timestamp: r.timestamp,
+        eventId: r.eventId || '',
+        sourceDeviceId: r.sourceDeviceId || 'PC-IDE',
+        correlationId: r.correlationId || '',
+        isReplayable: r.isReplayable === 1,
+        schemaVersion: r.schemaVersion || 1
       }));
     } catch (e) {
       console.error(`[SQLiteService] Erro ao ler eventos da conversa ${conversationId}:`, e);

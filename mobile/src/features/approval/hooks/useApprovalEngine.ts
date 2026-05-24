@@ -10,7 +10,7 @@ interface UseApprovalEngineProps {
   setActiveApproval: React.Dispatch<React.SetStateAction<ApprovalRequest | null>>;
   processingApproval: boolean;
   setProcessingApproval: (p: boolean) => void;
-  setPendingApprovals: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  setPendingApprovals?: React.Dispatch<React.SetStateAction<Record<string, any>>>;
   triggerSync?: () => Promise<void>;
 }
 
@@ -94,7 +94,7 @@ export const useApprovalEngine = ({
       });
 
       // 5. Limpeza do Mapa de Aprovações Pendentes e Fecho do Modal de UI
-      if (activeApproval.conversationId) {
+      if (activeApproval.conversationId && setPendingApprovals) {
         setPendingApprovals(prev => {
           const updated = { ...prev };
           delete updated[activeApproval.conversationId!.toLowerCase()];

@@ -241,6 +241,7 @@ using (var scope = app.Services.CreateScope())
         bool conversationIdColumnExists = false;
         bool companionEventsTableExists = false;
         bool nonceColumnExists = false;
+        bool sourceDeviceIdColumnExists = false;
         if (agentsTableExists)
         {
             using (var cmd = conn.CreateCommand())
@@ -281,6 +282,15 @@ using (var scope = app.Services.CreateScope())
                 companionEventsTableExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
             }
 
+            if (companionEventsTableExists)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('CompanionEvents') WHERE name='SourceDeviceId'";
+                    sourceDeviceIdColumnExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+                }
+            }
+
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Approvals') WHERE name='Nonce'";
@@ -288,7 +298,7 @@ using (var scope = app.Services.CreateScope())
             }
         }
 
-        schemaUpToDate = agentsTableExists && remoteIdColumnExists && isPinnedColumnExists && isDeletedColumnExists && pushTokenColumnExists && conversationIdColumnExists && companionEventsTableExists && nonceColumnExists;
+        schemaUpToDate = agentsTableExists && remoteIdColumnExists && isPinnedColumnExists && isDeletedColumnExists && pushTokenColumnExists && conversationIdColumnExists && companionEventsTableExists && nonceColumnExists && sourceDeviceIdColumnExists;
     }
     catch
     {

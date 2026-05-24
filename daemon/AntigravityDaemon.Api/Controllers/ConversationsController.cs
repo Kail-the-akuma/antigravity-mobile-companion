@@ -150,6 +150,7 @@ namespace AntigravityDaemon.Api.Controllers
             // 2. Record PromptSent event into Event Log
             var promptEvent = new CompanionEvent
             {
+                EventId = Guid.NewGuid(),
                 ConversationId = id,
                 EventType = "PromptSent",
                 PayloadJson = System.Text.Json.JsonSerializer.Serialize(new {
@@ -158,7 +159,11 @@ namespace AntigravityDaemon.Api.Controllers
                     content = userMessage.Content,
                     timestamp = userMessage.Timestamp
                 }),
-                Timestamp = DateTime.UtcNow
+                TimestampUtc = DateTime.UtcNow,
+                SourceDeviceId = "CompanionApp",
+                CorrelationId = userMessage.Id.ToString(),
+                IsReplayable = true,
+                SchemaVersion = 1
             };
             _context.CompanionEvents.Add(promptEvent);
 
@@ -235,13 +240,18 @@ namespace AntigravityDaemon.Api.Controllers
                     // Record and broadcast GenerationStarted event before launching agent CLI
                     var genEvent = new CompanionEvent
                     {
+                        EventId = Guid.NewGuid(),
                         ConversationId = convId,
                         EventType = "GenerationStarted",
                         PayloadJson = System.Text.Json.JsonSerializer.Serialize(new {
                             prompt = request.Content,
                             timestamp = DateTime.UtcNow
                         }),
-                        Timestamp = DateTime.UtcNow
+                        TimestampUtc = DateTime.UtcNow,
+                        SourceDeviceId = "PC-IDE",
+                        CorrelationId = Guid.NewGuid().ToString(),
+                        IsReplayable = false,
+                        SchemaVersion = 1
                     };
                     db.CompanionEvents.Add(genEvent);
                     await db.SaveChangesAsync();
@@ -303,6 +313,7 @@ namespace AntigravityDaemon.Api.Controllers
                         // 2. Record and broadcast AgentFinished event
                         var finishedEvent = new CompanionEvent
                         {
+                            EventId = Guid.NewGuid(),
                             ConversationId = convId,
                             EventType = "AgentFinished",
                             PayloadJson = System.Text.Json.JsonSerializer.Serialize(new {
@@ -311,7 +322,11 @@ namespace AntigravityDaemon.Api.Controllers
                                 content = agentMessage.Content,
                                 timestamp = agentMessage.Timestamp
                             }),
-                            Timestamp = DateTime.UtcNow
+                            TimestampUtc = DateTime.UtcNow,
+                            SourceDeviceId = "PC-IDE",
+                            CorrelationId = agentMessage.Id.ToString(),
+                            IsReplayable = true,
+                            SchemaVersion = 1
                         };
                         db.CompanionEvents.Add(finishedEvent);
                         await db.SaveChangesAsync();

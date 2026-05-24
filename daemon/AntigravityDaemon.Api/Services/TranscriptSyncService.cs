@@ -419,6 +419,7 @@ namespace AntigravityDaemon.Api.Services
                         // 1. Record PromptSent event
                         var promptEvent = new CompanionEvent
                         {
+                            EventId = Guid.NewGuid(),
                             ConversationId = item.ConversationId,
                             EventType = "PromptSent",
                             PayloadJson = JsonSerializer.Serialize(new {
@@ -427,7 +428,11 @@ namespace AntigravityDaemon.Api.Services
                                 content = item.Message.Content,
                                 timestamp = item.Message.Timestamp
                             }),
-                            Timestamp = DateTime.UtcNow
+                            TimestampUtc = DateTime.UtcNow,
+                            SourceDeviceId = "PC-IDE",
+                            CorrelationId = item.Message.Id.ToString(),
+                            IsReplayable = true,
+                            SchemaVersion = 1
                         };
                         _context.CompanionEvents.Add(promptEvent);
                         await _context.SaveChangesAsync();
@@ -443,13 +448,18 @@ namespace AntigravityDaemon.Api.Services
 
                         var genEvent = new CompanionEvent
                         {
+                            EventId = Guid.NewGuid(),
                             ConversationId = item.ConversationId,
                             EventType = "GenerationStarted",
                             PayloadJson = JsonSerializer.Serialize(new {
                                 prompt = item.Message.Content,
                                 timestamp = DateTime.UtcNow
                             }),
-                            Timestamp = DateTime.UtcNow
+                            TimestampUtc = DateTime.UtcNow,
+                            SourceDeviceId = "PC-IDE",
+                            CorrelationId = item.Message.Id.ToString(),
+                            IsReplayable = true,
+                            SchemaVersion = 1
                         };
                         _context.CompanionEvents.Add(genEvent);
                         await _context.SaveChangesAsync();
@@ -460,6 +470,7 @@ namespace AntigravityDaemon.Api.Services
                         // Record AgentFinished event
                         var finishedEvent = new CompanionEvent
                         {
+                            EventId = Guid.NewGuid(),
                             ConversationId = item.ConversationId,
                             EventType = "AgentFinished",
                             PayloadJson = JsonSerializer.Serialize(new {
@@ -468,7 +479,11 @@ namespace AntigravityDaemon.Api.Services
                                 content = item.Message.Content,
                                 timestamp = item.Message.Timestamp
                             }),
-                            Timestamp = DateTime.UtcNow
+                            TimestampUtc = DateTime.UtcNow,
+                            SourceDeviceId = "AgentInstance",
+                            CorrelationId = item.Message.Id.ToString(),
+                            IsReplayable = true,
+                            SchemaVersion = 1
                         };
                         _context.CompanionEvents.Add(finishedEvent);
                         await _context.SaveChangesAsync();

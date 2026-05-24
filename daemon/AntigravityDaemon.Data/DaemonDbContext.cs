@@ -25,6 +25,9 @@ namespace AntigravityDaemon.Data
             // CompanionEvent constraints
             modelBuilder.Entity<CompanionEvent>()
                 .HasKey(e => e.SequenceId);
+            modelBuilder.Entity<CompanionEvent>()
+                .HasIndex(e => e.EventId)
+                .IsUnique();
 
             // Configure relation: Task has many Approvals
             modelBuilder.Entity<ApprovalRequest>()

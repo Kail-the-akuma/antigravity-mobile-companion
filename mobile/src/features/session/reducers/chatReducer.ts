@@ -157,6 +157,12 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // Garantia de Idempotência: ignora eventos já processados na linha do tempo
         if (event.sequenceId <= newState.lastProcessedEventId) continue;
 
+        // Resguarda suporte a SchemaVersion desconhecidos (ignora eventos de esquemas futuros)
+        if (event.schemaVersion !== undefined && event.schemaVersion > 1) {
+          console.warn(`[chatReducer] Ignorado Evento #${event.sequenceId} de SchemaVersion futuro (${event.schemaVersion})`);
+          continue;
+        }
+
         console.log(`[chatReducer] Projetar Evento: #${event.sequenceId} (${event.eventType})`);
         
         const handler = eventHandlers[event.eventType as CompanionEventType];

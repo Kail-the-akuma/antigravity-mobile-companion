@@ -24,10 +24,20 @@ namespace AntigravityDaemon.Api.Controllers
         // GET: api/events/sync
         [HttpGet("sync")]
         [AuthorizeDevice]
-        public async Task<ActionResult<IEnumerable<CompanionEvent>>> SyncEvents([FromQuery] Guid conversationId, [FromQuery] long sinceId)
+        public async Task<ActionResult<IEnumerable<CompanionEvent>>> SyncEvents(
+            [FromQuery] Guid conversationId, 
+            [FromQuery] long sinceId,
+            [FromQuery] long? upToId = null)
         {
-            var events = await _context.CompanionEvents
-                .Where(e => e.ConversationId == conversationId && e.SequenceId > sinceId)
+            var query = _context.CompanionEvents
+                .Where(e => e.ConversationId == conversationId && e.SequenceId > sinceId);
+
+            if (upToId.HasValue)
+            {
+                query = query.Where(e => e.SequenceId <= upToId.Value);
+            }
+
+            var events = await query
                 .OrderBy(e => e.SequenceId)
                 .ToListAsync();
 

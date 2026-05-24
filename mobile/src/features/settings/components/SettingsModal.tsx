@@ -146,7 +146,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Manual OTA Updates Check */}
           <View style={styles.settingsSection}>
             <Text style={styles.settingsLabel}>Versão da Aplicação</Text>
-            <Text style={styles.settingsValue}>v1.0.0 (EAS Preview)</Text>
+            <Text style={styles.settingsValue}>v1.2.2 (Circuit Breaker & Clean SRP)</Text>
             
             <TouchableOpacity 
               style={styles.updateBtn} 

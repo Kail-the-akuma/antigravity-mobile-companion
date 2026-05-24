@@ -37,6 +37,11 @@ export interface CompanionEvent {
   eventType: string;
   payloadJson: string;
   timestamp: string;
+  eventId?: string;
+  sourceDeviceId?: string;
+  correlationId?: string;
+  isReplayable?: boolean;
+  schemaVersion?: number;
 }
 
 export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null = null) => {
@@ -136,36 +141,8 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
       });
 
       connection.onclose(() => {
-        if (!isShutDown) {
-          setIsConnected(false);
-          console.log('[SignalR] Connection closed unexpectedly. Triggering self-healing reconnection...');
-          // Trigger a clean restart of the connection logic to evaluate both local and remote fallbacks
-          setTimeout(startConnection, 2000);
-        }
-      });
-      connection.onreconnecting(() => {
-        if (!isShutDown) {
-          setIsConnected(false);
-          console.log('[SignalR] Connection lost. Attempting automatic SignalR reconnect...');
-          
-          if (reconnectTimeout) clearTimeout(reconnectTimeout);
-          reconnectTimeout = setTimeout(() => {
-            if (!isShutDown && connectionRef.current?.state === signalR.HubConnectionState.Reconnecting) {
-              console.log('[SignalR] Automatic reconnect is taking too long (6s). Forcing manual failover cycle...');
-              startConnection();
-            }
-          }, 6000);
-        }
-      });
-      connection.onreconnected(() => {
-        if (!isShutDown) {
-          setIsConnected(true);
-          console.log('[SignalR] Connection successfully reconnected automatically!');
-          if (reconnectTimeout) {
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = null;
-          }
-        }
+        setIsConnected(false);
+        console.log('[SignalR] Transient connection closed silently. Relying on HTTP REST Poller.');
       });
 
       return connection;
@@ -174,22 +151,14 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
     const startConnection = async () => {
       if (isShutDown) return;
 
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = null;
-      }
-
       // Clean up any existing connection first to prevent parallel connection leaks!
       if (connectionRef.current) {
         try {
           console.log('[SignalR] Cleaning up previous connection before starting new connect cycle...');
           const oldConnection = connectionRef.current;
           connectionRef.current = null;
-          // Não bloquear a thread de reconexão caso o fecho do socket antigo fique pendurado devido à quebra de rede
-          oldConnection.stop().catch(e => console.warn('[SignalR] Error stopping old connection asynchronously:', e));
-        } catch (e) {
-          console.warn('[SignalR] Error during connection cleanup:', e);
-        }
+          oldConnection.stop().catch(() => {});
+        } catch {}
       }
 
       const currentHubUrl = hubUrlRef.current;
@@ -199,21 +168,16 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
         return;
       }
 
-      console.log(`[SignalR] Attempting local hub connection: ${currentHubUrl}`);
+      console.log(`[SignalR] Connecting to transient notification layer: ${currentHubUrl}`);
       activeConnection = buildAndSetupConnection(currentHubUrl, false);
       connectionRef.current = activeConnection;
 
       try {
-        const startPromise = activeConnection.start();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Local SignalR connection timeout')), 3500)
-        );
-
-        await Promise.race([startPromise, timeoutPromise]);
-        console.log('[SignalR] Connected to local SignalR Hub successfully');
+        await activeConnection.start();
+        console.log('[SignalR] Connected to local transient notification layer successfully');
         setIsConnected(true);
       } catch (err) {
-        console.warn('[SignalR] Local connection failed:', err);
+        console.log('[SignalR] Local transient connection failed. Trying remote fallback...');
         if (isShutDown) return;
 
         // Clean up failed local connection
@@ -225,31 +189,20 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
         // Try public fallback tunnel hub connection if available
         const currentFallbackHubUrl = fallbackHubUrlRef.current;
         if (currentFallbackHubUrl) {
-          console.log(`[SignalR] Local failed. Retrying with remote public fallback: ${currentFallbackHubUrl}`);
+          console.log(`[SignalR] Retrying with remote public fallback: ${currentFallbackHubUrl}`);
           activeConnection = buildAndSetupConnection(currentFallbackHubUrl, true);
           connectionRef.current = activeConnection;
 
           try {
-            const startPromise = activeConnection.start();
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Remote SignalR connection timeout')), 5000)
-            );
-
-            await Promise.race([startPromise, timeoutPromise]);
-            console.log('[SignalR] Connected to remote public SignalR Hub successfully!');
+            await activeConnection.start();
+            console.log('[SignalR] Connected to remote public transient notification layer successfully!');
             setIsConnected(true);
           } catch (fallbackErr) {
-            console.warn('[SignalR] Remote fallback connection also failed. Retrying in 5 seconds...', fallbackErr);
+            console.log('[SignalR] Remote fallback transient connection failed. Passive fallback active.');
             setIsConnected(false);
-            if (!isShutDown) {
-              setTimeout(startConnection, 5000);
-            }
           }
         } else {
           setIsConnected(false);
-          if (!isShutDown) {
-            setTimeout(startConnection, 5000);
-          }
         }
       }
     };

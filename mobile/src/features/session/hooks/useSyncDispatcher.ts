@@ -51,24 +51,28 @@ export const useSyncDispatcher = ({ isConnected }: UseSyncDispatcherProps) => {
         }
 
         // 2. Tentar Transmissão de Rede
-        // O ApiService.request tenta o IP local e, se falhar por timeout, faz o failover automático para o túnel remoto!
         let success = false;
         try {
-          console.log(`[SyncDispatcher] A enviar evento ${event.eventId} (Tentativa: ${event.syncAttempts + 1})...`);
+          console.log(`[SyncDispatcher] A enviar evento ${event.eventId} (Tipo: ${event.action}, Tentativa: ${event.syncAttempts + 1})...`);
           
-          const response: any = await ApiService.request(
-            `/api/approvals/${event.approvalId}/respond`, 
-            'POST', 
-            {
-              status: event.action,
-              signature: event.signature,
-              eventId: event.eventId,
-              timestampUtc: event.timestampUtc,
-              nonce: event.nonce
-            }
-          );
+          if (event.action === 'SendMessage') {
+            await ApiService.sendMessage(event.approvalId, event.signature);
+            console.log(`[SyncDispatcher] Mensagem enviada offline com sucesso para conversa ${event.approvalId}`);
+          } else {
+            const response: any = await ApiService.request(
+              `/api/approvals/${event.approvalId}/respond`, 
+              'POST', 
+              {
+                status: event.action,
+                signature: event.signature,
+                eventId: event.eventId,
+                timestampUtc: event.timestampUtc,
+                nonce: event.nonce
+              }
+            );
+            console.log(`[SyncDispatcher] ACK de aprovacao recebido para evento ${event.eventId}:`, response);
+          }
 
-          console.log(`[SyncDispatcher] ACK recebido do Daemon para evento ${event.eventId}:`, response);
           success = true;
         } catch (err: any) {
           console.warn(`[SyncDispatcher] Erro ao sincronizar evento ${event.eventId}:`, err.message || err);
@@ -131,6 +135,18 @@ export const useSyncDispatcher = ({ isConnected }: UseSyncDispatcherProps) => {
     const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
     return () => {
       appStateSubscription.remove();
+    };
+  }, [triggerSync]);
+
+  // Subscreve ao SQLiteService para despoletar transmissao imediata quando novos itens entram na fila
+  useEffect(() => {
+    const unsubscribe = sqliteService.subscribe(() => {
+      console.log('[SyncDispatcher] Novo evento detetado na fila SQLite. A despoletar triggerSync...');
+      triggerSync();
+    });
+
+    return () => {
+      unsubscribe();
     };
   }, [triggerSync]);
 
