@@ -159,6 +159,18 @@ builder.Services.AddDbContext<DaemonDbContext>(options =>
 // Add SignalR for real-time WebSockets communication
 builder.Services.AddSignalR();
 
+// Enable CORS for local cross-origin connections (e.g., from Expo Web at port 8081)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.SetIsOriginAllowed(origin => true) // Dynamic origin matching to support credentials over HTTP/HTTPS
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials(); // Required for SignalR WebSocket handshake negotiation
+    });
+});
+
 // Add Workspace and LLM services
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IWorkspaceService, WorkspaceService>();
@@ -194,6 +206,8 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.UseRouting();
+
+app.UseCors("AllowAll");
 
 app.UseAuthorization();
 

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { ApiService } from '../../../services/api';
 import { ApprovalRequest } from '../../../hooks/useSignalR';
@@ -28,6 +29,11 @@ export const useNotificationEngine = ({
   activeApproval,
   setPendingApprovals,
 }: UseNotificationEngineProps) => {
+
+  // Curtocircuitar em ambiente Web para evitar chamadas nativas que causam quebra (blank screen)
+  if (Platform.OS === 'web') {
+    return;
+  }
 
   // 1. Register push notifications when hostUrl changes (paired)
   useEffect(() => {

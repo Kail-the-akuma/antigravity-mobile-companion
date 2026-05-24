@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 
 export interface LocalApprovalEvent {
@@ -23,10 +24,51 @@ export interface SucceededEvent {
 class SQLiteService {
   private db: SQLite.SQLiteDatabase | null = null;
 
+  // ==========================================
+  // WEB STORAGE FALLBACK UTILS
+  // ==========================================
+  private getWebMetadata(key: string): string | null {
+    try {
+      return typeof window !== 'undefined' ? window.localStorage.getItem(`meta_${key}`) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private setWebMetadata(key: string, value: string): void {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(`meta_${key}`, value);
+      }
+    } catch {}
+  }
+
+  private getWebQueue(): any[] {
+    try {
+      const q = typeof window !== 'undefined' ? window.localStorage.getItem('web_queue') : null;
+      return q ? JSON.parse(q) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private saveWebQueue(q: any[]): void {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('web_queue', JSON.stringify(q));
+      }
+    } catch {}
+  }
+
   /**
    * Abre e inicializa a base de dados SQLite local
    */
-  public async initialize(): Promise<SQLite.SQLiteDatabase> {
+  public async initialize(): Promise<any> {
+    if (Platform.OS === 'web') {
+      console.log('[SQLiteService] Executando em ambiente Web. SQLiteDatabase mock ativo.');
+      return {};
+    }
+
     if (this.db) return this.db;
 
     try {
@@ -72,7 +114,10 @@ class SQLiteService {
     }
   }
 
-  private getDbSync(): SQLite.SQLiteDatabase {
+  private getDbSync(): SQLite.SQLiteDatabase | null {
+    if (Platform.OS === 'web') {
+      return null;
+    }
     if (!this.db) {
       this.db = SQLite.openDatabaseSync('companion_local.db');
     }
@@ -84,7 +129,11 @@ class SQLiteService {
   // ==========================================
 
   public async getMetadata(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return this.getWebMetadata(key);
+    }
     const db = this.getDbSync();
+    if (!db) return null;
     try {
       const row = await db.getFirstAsync<{ value: string }>(
         'SELECT value FROM Metadata WHERE key = ?',
@@ -98,7 +147,12 @@ class SQLiteService {
   }
 
   public async setMetadata(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      this.setWebMetadata(key, value);
+      return;
+    }
     const db = this.getDbSync();
+    if (!db) return;
     try {
       await db.runAsync(
         'INSERT INTO Metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
@@ -118,7 +172,19 @@ class SQLiteService {
    * Enfileira um novo evento de aprovação na SQLite local de forma persistente
    */
   public async enqueueEvent(event: Omit<LocalApprovalEvent, 'syncAttempts'>): Promise<void> {
+    if (Platform.OS === 'web') {
+      console.log('[SQLiteService Web] Enqueuing event:', event);
+      try {
+        const events = this.getWebQueue();
+        events.push({ ...event, syncAttempts: 0 });
+        this.saveWebQueue(events);
+      } catch (err) {
+        console.error('[SQLiteService Web] Erro ao enfileirar:', err);
+      }
+      return;
+    }
     const db = this.getDbSync();
+    if (!db) return;
     try {
       await db.runAsync(
         `INSERT INTO LocalAuthoritativeQueue 
@@ -146,7 +212,11 @@ class SQLiteService {
    * Obtém todos os eventos pendentes de sincronização ordenados cronologicamente (UUID v7 natural)
    */
   public async getPendingEvents(): Promise<LocalApprovalEvent[]> {
+    if (Platform.OS === 'web') {
+      return this.getWebQueue();
+    }
     const db = this.getDbSync();
+    if (!db) return [];
     try {
       const rows = await db.getAllAsync<any>(
         'SELECT * FROM LocalAuthoritativeQueue ORDER BY eventId ASC'
@@ -172,7 +242,13 @@ class SQLiteService {
    * Remove um evento da fila local de forma atómica após ACK de sucesso
    */
   public async removeEvent(eventId: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      const queue = this.getWebQueue().filter(e => e.eventId !== eventId);
+      this.saveWebQueue(queue);
+      return;
+    }
     const db = this.getDbSync();
+    if (!db) return;
     try {
       await db.runAsync(
         'DELETE FROM LocalAuthoritativeQueue WHERE eventId = ?',
@@ -189,7 +265,13 @@ class SQLiteService {
    * Incrementa as tentativas de sincronização de um evento transiente
    */
   public async incrementAttempts(eventId: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      const queue = this.getWebQueue().map(e => e.eventId === eventId ? { ...e, syncAttempts: e.syncAttempts + 1 } : e);
+      this.saveWebQueue(queue);
+      return;
+    }
     const db = this.getDbSync();
+    if (!db) return;
     try {
       await db.runAsync(
         'UPDATE LocalAuthoritativeQueue SET syncAttempts = syncAttempts + 1 WHERE eventId = ?',
@@ -208,7 +290,28 @@ class SQLiteService {
    * Grava um conjunto de eventos sincronizados do Daemon atonicamente dentro de uma transação SQL
    */
   public async saveSucceededEvents(events: SucceededEvent[], lastId: number): Promise<void> {
+    if (Platform.OS === 'web') {
+      try {
+        const cacheKey = 'web_succeeded_events';
+        const raw = typeof window !== 'undefined' ? window.localStorage.getItem(cacheKey) : null;
+        let list: SucceededEvent[] = raw ? JSON.parse(raw) : [];
+        
+        for (const event of events) {
+          list = list.filter(e => e.sequenceId !== event.sequenceId);
+          list.push(event);
+        }
+        
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(cacheKey, JSON.stringify(list));
+        }
+        this.setWebMetadata('lastProcessedEventId', lastId.toString());
+      } catch (err) {
+        console.error('[SQLiteService Web] Erro ao salvar eventos:', err);
+      }
+      return;
+    }
     const db = this.getDbSync();
+    if (!db) return;
     
     // Executa a escrita atómica sob uma transação transacional SQLite
     try {
@@ -249,7 +352,20 @@ class SQLiteService {
    * Obtém os eventos sucedidos de uma conversa ordenados de forma monotónica
    */
   public async getSucceededEvents(conversationId: string): Promise<SucceededEvent[]> {
+    if (Platform.OS === 'web') {
+      try {
+        const cacheKey = 'web_succeeded_events';
+        const raw = typeof window !== 'undefined' ? window.localStorage.getItem(cacheKey) : null;
+        const list: SucceededEvent[] = raw ? JSON.parse(raw) : [];
+        return list
+          .filter(e => e.conversationId === conversationId)
+          .sort((a, b) => a.sequenceId - b.sequenceId);
+      } catch {
+        return [];
+      }
+    }
     const db = this.getDbSync();
+    if (!db) return [];
     try {
       const rows = await db.getAllAsync<any>(
         'SELECT * FROM SucceededEvents WHERE conversationId = ? ORDER BY sequenceId ASC',

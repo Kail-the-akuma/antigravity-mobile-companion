@@ -15,12 +15,36 @@ import { CryptoService } from '../services/crypto';
 import { ApiService } from '../services/api';
 import * as SecureStore from 'expo-secure-store';
 
-
 interface PairingScreenProps {
   onPairSuccess: () => void;
 }
 
 const LAST_IP_KEY = 'antigravity_companion_last_ip';
+
+// Plataforma-safe SecureStore fallback para ambiente Web
+const safeSecureStore = {
+  setItemAsync: async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(key, value);
+        }
+      } catch {}
+      return;
+    }
+    return await SecureStore.setItemAsync(key, value);
+  },
+  getItemAsync: async (key: string): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      try {
+        return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+      } catch {
+        return null;
+      }
+    }
+    return await SecureStore.getItemAsync(key);
+  }
+};
 
 export const PairingScreen: React.FC<PairingScreenProps> = ({ onPairSuccess }) => {
   const [ip, setIp] = useState('');
@@ -31,7 +55,7 @@ export const PairingScreen: React.FC<PairingScreenProps> = ({ onPairSuccess }) =
 
   // Restore last used IP on mount
   useEffect(() => {
-    SecureStore.getItemAsync(LAST_IP_KEY).then((saved) => {
+    safeSecureStore.getItemAsync(LAST_IP_KEY).then((saved) => {
       if (saved) setIp(saved);
     });
   }, []);
@@ -80,7 +104,7 @@ export const PairingScreen: React.FC<PairingScreenProps> = ({ onPairSuccess }) =
         await ApiService.setFallbackHostUrl(data.tunnelUrl);
         console.log('[PairingScreen] Public fallback tunnel URL registered:', data.tunnelUrl);
       }
-      await SecureStore.setItemAsync(LAST_IP_KEY, sanitizedIp);
+      await safeSecureStore.setItemAsync(LAST_IP_KEY, sanitizedIp);
       onPairSuccess();
     } catch (err: any) {
       console.error('Pairing error:', err);

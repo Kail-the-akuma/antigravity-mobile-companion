@@ -1,18 +1,55 @@
+import { Platform } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 
 const SECRET_KEY_STORAGE_KEY = 'antigravity_companion_secret_key';
 const DEVICE_ID_STORAGE_KEY = 'antigravity_companion_device_id';
 
+// Plataforma-safe SecureStore fallback para ambiente Web
+const safeSecureStore = {
+  setItemAsync: async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(key, value);
+        }
+      } catch {}
+      return;
+    }
+    return await SecureStore.setItemAsync(key, value);
+  },
+  getItemAsync: async (key: string): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      try {
+        return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+      } catch {
+        return null;
+      }
+    }
+    return await SecureStore.getItemAsync(key);
+  },
+  deleteItemAsync: async (key: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(key);
+        }
+      } catch {}
+      return;
+    }
+    return await SecureStore.deleteItemAsync(key);
+  }
+};
+
 export const CryptoService = {
   // Generates and securely stores a device ID and a 256-bit secure secret key
   initializeIdentity: async (): Promise<{ deviceId: string; secretKey: string }> => {
-    let deviceId = await SecureStore.getItemAsync(DEVICE_ID_STORAGE_KEY);
-    let secretKey = await SecureStore.getItemAsync(SECRET_KEY_STORAGE_KEY);
+    let deviceId = await safeSecureStore.getItemAsync(DEVICE_ID_STORAGE_KEY);
+    let secretKey = await safeSecureStore.getItemAsync(SECRET_KEY_STORAGE_KEY);
 
     if (!deviceId) {
       deviceId = Crypto.randomUUID();
-      await SecureStore.setItemAsync(DEVICE_ID_STORAGE_KEY, deviceId);
+      await safeSecureStore.setItemAsync(DEVICE_ID_STORAGE_KEY, deviceId);
     }
 
     if (!secretKey) {
@@ -22,7 +59,7 @@ export const CryptoService = {
       secretKey = Array.from(randomBytes)
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
-      await SecureStore.setItemAsync(SECRET_KEY_STORAGE_KEY, secretKey);
+      await safeSecureStore.setItemAsync(SECRET_KEY_STORAGE_KEY, secretKey);
     }
 
     return { deviceId, secretKey };
@@ -30,14 +67,14 @@ export const CryptoService = {
 
   // Clears stored identity keys (useful for unpairing)
   clearIdentity: async (): Promise<void> => {
-    await SecureStore.deleteItemAsync(DEVICE_ID_STORAGE_KEY);
-    await SecureStore.deleteItemAsync(SECRET_KEY_STORAGE_KEY);
+    await safeSecureStore.deleteItemAsync(DEVICE_ID_STORAGE_KEY);
+    await safeSecureStore.deleteItemAsync(SECRET_KEY_STORAGE_KEY);
   },
 
   // Gets the currently stored identity if it exists
   getIdentity: async (): Promise<{ deviceId: string; secretKey: string } | null> => {
-    const deviceId = await SecureStore.getItemAsync(DEVICE_ID_STORAGE_KEY);
-    const secretKey = await SecureStore.getItemAsync(SECRET_KEY_STORAGE_KEY);
+    const deviceId = await safeSecureStore.getItemAsync(DEVICE_ID_STORAGE_KEY);
+    const secretKey = await safeSecureStore.getItemAsync(SECRET_KEY_STORAGE_KEY);
 
     if (!deviceId || !secretKey) {
       return null;

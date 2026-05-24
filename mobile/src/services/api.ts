@@ -1,8 +1,45 @@
+import { Platform } from 'react-native';
 import { CryptoService } from './crypto';
 import * as SecureStore from 'expo-secure-store';
 
 const HOST_STORAGE_KEY = 'antigravity_companion_host_url';
 const FALLBACK_HOST_STORAGE_KEY = 'antigravity_companion_fallback_host_url';
+
+// Plataforma-safe SecureStore fallback para ambiente Web
+const safeSecureStore = {
+  setItemAsync: async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(key, value);
+        }
+      } catch {}
+      return;
+    }
+    return await SecureStore.setItemAsync(key, value);
+  },
+  getItemAsync: async (key: string): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      try {
+        return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+      } catch {
+        return null;
+      }
+    }
+    return await SecureStore.getItemAsync(key);
+  },
+  deleteItemAsync: async (key: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(key);
+        }
+      } catch {}
+      return;
+    }
+    return await SecureStore.deleteItemAsync(key);
+  }
+};
 
 let onUnauthorizedCallback: (() => void) | null = null;
 
@@ -28,28 +65,28 @@ export const ApiService = {
   },
 
   setHostUrl: async (url: string): Promise<void> => {
-    await SecureStore.setItemAsync(HOST_STORAGE_KEY, url);
+    await safeSecureStore.setItemAsync(HOST_STORAGE_KEY, url);
   },
 
   getHostUrl: async (): Promise<string | null> => {
-    return await SecureStore.getItemAsync(HOST_STORAGE_KEY);
+    return await safeSecureStore.getItemAsync(HOST_STORAGE_KEY);
   },
 
   clearHostUrl: async (): Promise<void> => {
-    await SecureStore.deleteItemAsync(HOST_STORAGE_KEY);
-    await SecureStore.deleteItemAsync(FALLBACK_HOST_STORAGE_KEY).catch(() => {});
+    await safeSecureStore.deleteItemAsync(HOST_STORAGE_KEY);
+    await safeSecureStore.deleteItemAsync(FALLBACK_HOST_STORAGE_KEY).catch(() => {});
   },
 
   setFallbackHostUrl: async (url: string): Promise<void> => {
-    await SecureStore.setItemAsync(FALLBACK_HOST_STORAGE_KEY, url);
+    await safeSecureStore.setItemAsync(FALLBACK_HOST_STORAGE_KEY, url);
   },
 
   getFallbackHostUrl: async (): Promise<string | null> => {
-    return await SecureStore.getItemAsync(FALLBACK_HOST_STORAGE_KEY);
+    return await safeSecureStore.getItemAsync(FALLBACK_HOST_STORAGE_KEY);
   },
 
   clearFallbackHostUrl: async (): Promise<void> => {
-    await SecureStore.deleteItemAsync(FALLBACK_HOST_STORAGE_KEY);
+    await safeSecureStore.deleteItemAsync(FALLBACK_HOST_STORAGE_KEY);
   },
 
   // Helper to make signed requests to the protected daemon API

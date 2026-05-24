@@ -47,12 +47,13 @@ namespace AntigravityDaemon.Api.Core.Monitoring.Services
         {
             return new List<object>
             {
-                new { name = "Gemini 1.5 Flash (Free Tier)", remainingSegments = 4, totalSegments = 5, refreshTime = "Refreshes in 12 hours, 15 minutes", isDepleted = false },
-                new { name = "Gemini 1.5 Pro (Standard Tier)", remainingSegments = 3, totalSegments = 5, refreshTime = "Refreshes in 3 hours, 45 minutes", isDepleted = false },
-                new { name = "Claude 3.5 Sonnet (Professional)", remainingSegments = 2, totalSegments = 5, refreshTime = "Refreshes in 1 hour, 20 minutes", isDepleted = false },
-                new { name = "Claude 3.0 Opus (Enterprise)", remainingSegments = 0, totalSegments = 5, refreshTime = "Refreshes in 4 days, 1 hour", isDepleted = true },
-                new { name = "GPT-4o mini (Developer Tier)", remainingSegments = 5, totalSegments = 5, refreshTime = "Fully Charged", isDepleted = false },
-                new { name = "GPT-4o (Premium Tier)", remainingSegments = 1, totalSegments = 5, refreshTime = "Refreshes in 45 minutes", isDepleted = false }
+                new { name = "Gemini 3.1 Pro (High)", remainingSegments = 2, totalSegments = 5, refreshTime = "Refreshes in 4 hours, 20 minutes", isDepleted = false },
+                new { name = "Claude Sonnet 4.6 (Thinking)", remainingSegments = 0, totalSegments = 5, refreshTime = "Refreshes in 2 days, 23 hours", isDepleted = true },
+                new { name = "Claude Opus 4.6 (Thinking)", remainingSegments = 0, totalSegments = 5, refreshTime = "Refreshes in 2 days, 23 hours", isDepleted = true },
+                new { name = "GPT-OSS 120B (Medium)", remainingSegments = 0, totalSegments = 5, refreshTime = "Refreshes in 2 days, 23 hours", isDepleted = true },
+                new { name = "Gemini 3.5 Flash (Medium)", remainingSegments = 2, totalSegments = 5, refreshTime = "Refreshes in 4 hours, 20 minutes", isDepleted = false },
+                new { name = "Gemini 3.5 Flash (High)", remainingSegments = 2, totalSegments = 5, refreshTime = "Refreshes in 4 hours, 20 minutes", isDepleted = false },
+                new { name = "Gemini 3.1 Pro (Low)", remainingSegments = 1, totalSegments = 5, refreshTime = "Refreshes in 4 hours, 20 minutes", isDepleted = false }
             };
         }
 

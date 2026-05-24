@@ -51,6 +51,10 @@ export const AppNavigator: React.FC = () => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const testLocalNotification = async () => {
+    if (Platform.OS === 'web') {
+      console.log('[TestNotification Web Mock] Notificação local disparada com sucesso!');
+      return;
+    }
     try {
       console.log('[TestNotification] Triggering test local notification...');
       await Notifications.scheduleNotificationAsync({
