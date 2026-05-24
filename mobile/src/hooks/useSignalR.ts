@@ -185,9 +185,10 @@ export const useSignalR = (hubUrl: string | null, fallbackHubUrl: string | null 
           console.log('[SignalR] Cleaning up previous connection before starting new connect cycle...');
           const oldConnection = connectionRef.current;
           connectionRef.current = null;
-          await oldConnection.stop();
+          // Não bloquear a thread de reconexão caso o fecho do socket antigo fique pendurado devido à quebra de rede
+          oldConnection.stop().catch(e => console.warn('[SignalR] Error stopping old connection asynchronously:', e));
         } catch (e) {
-          console.warn('[SignalR] Error stopping old connection:', e);
+          console.warn('[SignalR] Error during connection cleanup:', e);
         }
       }
 

@@ -11,6 +11,7 @@ export type CompanionEventType =
 export interface PromptSentPayload {
   content: string;
   id?: string;
+  role?: 'user' | 'agent' | 'user-ide';
 }
 
 export interface ApprovalRequestedPayload {
@@ -34,6 +35,7 @@ export const parsePromptSent = (payloadJson: string): PromptSentPayload | null =
     return {
       content: data.Content || data.content || '',
       id: data.Id || data.id,
+      role: (data.role || data.Role || 'user-ide') as 'user' | 'agent' | 'user-ide',
     };
   } catch (e) {
     console.warn('[Protocol] Falha no parse do payload de PromptSent:', e);

@@ -91,7 +91,7 @@ const eventHandlers: Record<CompanionEventType, ProjectionHandler> = {
       messages: [...state.messages, {
         id: msgId,
         conversationId: event.conversationId,
-        role: 'user' as const,
+        role: (payload.role || 'user-ide') as 'user' | 'agent' | 'user-ide',
         content: payload.content,
         timestamp: event.timestamp || new Date().toISOString(),
       }].slice(-6), // Otimização controlada de tamanho de ecrã móvel
